@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dine In Restaurant POS
 
-## Getting Started
+A touch-friendly restaurant POS prototype built with the Next.js App Router, React, TypeScript, and Tailwind CSS. Operations are simulated in the browser; no production backend or payment provider is connected.
 
-First, run the development server:
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run build` to create a production build.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Current demo features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Restaurant service dashboard with sample sales, order, table, and ticket-time metrics.
+- Visual dining-room table selector with Available, Occupied, Reserved, and Cleaning states.
+- Searchable, category-filtered menu with sample dishes and prices.
+- Dine-in and takeaway tickets, quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
+- Simulated checkout that records a paid status and moves the table to Cleaning.
+- Kitchen queue with new → preparing → ready → served ticket transitions.
+- Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal bill splits for 2–8 guests with individual payment methods.
+- Persisted transaction history with each payment method and amount.
+- Floor management for changing table states and transferring open orders between tables.
+- Menu availability toggles that immediately disable sold-out items in ordering.
+- Service report view with live order counts and a clearly labeled sample sales pulse.
+- Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
 
-## Learn More
+## Architecture and state
 
-To learn more about Next.js, take a look at the following resources:
+`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The demo seeds the first visit with sample tables and orders. Existing browser data wins on later visits. Clearing site data resets the demo to the sample state.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Business rules in this slice
 
-## Deploy on Vercel
+- Menu prices are stored in Indian rupees and quantity is a positive integer.
+- Tax is currently simulated as 8% after any discount.
+- Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
+- Completing checkout marks the order Paid and moves its table to Cleaning.
+- Takeaway orders have no table assignment.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Assumptions and limitations
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Sales and headline metric values are sample figures; they are not calculated from a complete transaction ledger.
+- Payment is simulated. Bill splitting by item, modifiers, cancellation, table merging, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes and ticket transfer are available in the floor management view.
+- Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
+- IndexedDB availability is required for durable persistence.
+- The current visual theme is light mode; dark mode and automated workflow tests remain to be implemented.
