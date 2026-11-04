@@ -27,7 +27,8 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
 - Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, and availability.
-- Service report view with live order counts and a clearly labeled sample sales pulse.
+- Service report view with date filters, live order counts, transaction history, and CSV export for recorded payments.
+- Demo staff roles for Manager, Cashier, Waiter, and Kitchen with role-specific navigation and checkout controls.
 - Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
 
 ## Architecture and state
@@ -48,7 +49,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 ## Assumptions and limitations
 
 - Dashboard sales, order, occupancy, and ticket-time metrics are calculated from this device’s records. The sales pulse chart remains illustrative sample data.
-- Payment is simulated. Bill splitting by selected items, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes, order transfer, and table pair merging are available in the floor management view.
+- Payment is simulated. Role selection is a client-side demo aid and does not provide authentication or server-enforced permissions. Bill splitting is equal by guest; item-based splitting is not implemented. Table state changes, order transfer, and table pair merging are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
 - The current visual theme is light mode; dark mode and automated workflow tests remain to be implemented.
