@@ -14,7 +14,8 @@ export type MenuItem = {
 };
 
 export type Table = { id: string; name: string; seats: number; status: TableStatus; guests?: number };
-export type OrderLine = { menuItemId: string; quantity: number; note?: string };
+export type MenuModifier = { id: string; label: string; price: number };
+export type OrderLine = { id?: string; menuItemId: string; quantity: number; note?: string; modifiers?: MenuModifier[] };
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway"; status: OrderStatus; items: OrderLine[]; createdAt: string };
 export type PaymentMethod = "Cash" | "Card" | "UPI";
 export type PaymentTransaction = { id: string; orderId: string; amount: number; method: PaymentMethod; createdAt: string; splitLabel?: string };

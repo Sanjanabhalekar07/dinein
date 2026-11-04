@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type Order, type OrderLine, type PaymentMethod, type PosData, type Table } from "@/lib/pos-data";
+import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type Table } from "@/lib/pos-data";
 
 const categories: Category[] = ["All", "Starters", "Mains", "Pizza", "Drinks", "Desserts"];
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
 const itemById = (id: string) => menu.find((item) => item.id === id);
+const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
+  Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 1.5 }, { id: "no-garnish", label: "No garnish", price: 0 }],
+  Mains: [{ id: "extra-protein", label: "Extra protein", price: 6 }, { id: "no-onion", label: "No onion", price: 0 }],
+  Pizza: [{ id: "extra-cheese", label: "Extra mozzarella", price: 3 }, { id: "chili-oil", label: "Chili oil", price: 1 }],
+  Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 1 }, { id: "less-ice", label: "Less ice", price: 0 }],
+  Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 4 }, { id: "extra-cream", label: "Extra cream", price: 2 }],
+};
+const lineUnitPrice = (line: OrderLine) => (itemById(line.menuItemId)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
 
 export default function Home() {
   const [data, setData] = useState<PosData>(initialData);
@@ -22,6 +30,10 @@ export default function Home() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("UPI");
   const [guestCount, setGuestCount] = useState(2);
   const [guestMethods, setGuestMethods] = useState<PaymentMethod[]>(["UPI", "Cash"]);
+  const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
+  const [customQuantity, setCustomQuantity] = useState(1);
+  const [customModifierIds, setCustomModifierIds] = useState<string[]>([]);
+  const [customNote, setCustomNote] = useState("");
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [] }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -38,7 +50,7 @@ export default function Home() {
   }, [notice]);
 
   const visibleMenu = useMemo(() => menu.filter((item) => (category === "All" || item.category === category) && `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())), [category, search]);
-  const subtotal = cart.reduce((sum, line) => sum + (itemById(line.menuItemId)?.price ?? 0) * line.quantity, 0);
+  const subtotal = cart.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
   const activeOrders = data.orders.filter((order) => order.status !== "paid");
@@ -51,14 +63,27 @@ export default function Home() {
   const checkoutTotal = checkoutSubtotal - checkoutDiscount + checkoutTax;
 
   function addToCart(item: MenuItem) {
-    setCart((lines) => {
-      const existing = lines.find((line) => line.menuItemId === item.id);
-      return existing ? lines.map((line) => line.menuItemId === item.id ? { ...line, quantity: line.quantity + 1 } : line) : [...lines, { menuItemId: item.id, quantity: 1 }];
-    });
+    setCustomizingItem(item);
+    setCustomQuantity(1);
+    setCustomModifierIds([]);
+    setCustomNote("");
+  }
+
+  function confirmCustomizedItem() {
+    if (!customizingItem) return;
+    const line: OrderLine = {
+      id: crypto.randomUUID(),
+      menuItemId: customizingItem.id,
+      quantity: customQuantity,
+      modifiers: modifiersByCategory[customizingItem.category].filter((modifier) => customModifierIds.includes(modifier.id)),
+      note: customNote.trim() || undefined,
+    };
+    setCart((lines) => [...lines, line]);
+    setCustomizingItem(null);
   }
 
   function changeQuantity(id: string, change: number) {
-    setCart((lines) => lines.map((line) => line.menuItemId === id ? { ...line, quantity: line.quantity + change } : line).filter((line) => line.quantity > 0));
+    setCart((lines) => lines.map((line) => (line.id ?? line.menuItemId) === id ? { ...line, quantity: line.quantity + change } : line).filter((line) => line.quantity > 0));
   }
 
   function placeOrder() {
@@ -139,7 +164,7 @@ export default function Home() {
   }
 
   function lineTotal(lines: OrderLine[]) {
-    return lines.reduce((sum, line) => sum + (itemById(line.menuItemId)?.price ?? 0) * line.quantity, 0);
+    return lines.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   }
 
   return (
@@ -222,11 +247,11 @@ export default function Home() {
               <div className="ticket-table-row"><span>Table</span><button onClick={() => setView("Floor plan")}>{selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Choose table"} <span>⌄</span></button></div>
               <div className="order-list-heading"><span>ORDER ITEMS</span><span>{cart.reduce((sum, line) => sum + line.quantity, 0)} items</span></div>
               <div className="cart-lines">
-                {cart.length === 0 && currentOrder && <div className="existing-order"><span className="existing-order-top">{currentOrder.id} <b>{currentOrder.status}</b></span>{currentOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div className="cart-line" key={line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money((item?.price ?? 0) * line.quantity)}</b></div><div className="line-controls"><span>{money(item?.price ?? 0)} each</span><span className="quantity-controls"><button disabled aria-label="Decrease quantity">−</button><b>{line.quantity}</b><button disabled aria-label="Increase quantity">＋</button></span></div></div>; })}</div>}
-                {cart.map((line) => { const item = itemById(line.menuItemId); return <div className="cart-line" key={line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money((item?.price ?? 0) * line.quantity)}</b></div><div className="line-controls"><span>{money(item?.price ?? 0)} each</span><span className="quantity-controls"><button onClick={() => changeQuantity(line.menuItemId, -1)} aria-label={`Decrease ${item?.name}`}>−</button><b>{line.quantity}</b><button onClick={() => changeQuantity(line.menuItemId, 1)} aria-label={`Increase ${item?.name}`}>＋</button></span></div></div>; })}
+                {cart.length === 0 && currentOrder && <div className="existing-order"><span className="existing-order-top">{currentOrder.id} <b>{currentOrder.status}</b></span>{currentOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div className="cart-line" key={line.id ?? line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line))} each</span><span className="quantity-controls"><button disabled aria-label="Decrease quantity">−</button><b>{line.quantity}</b><button disabled aria-label="Increase quantity">＋</button></span></div></div>; })}</div>}
+                {cart.map((line) => { const item = itemById(line.menuItemId); const lineKey = line.id ?? line.menuItemId; return <div className="cart-line" key={lineKey}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line))} each</span><span className="quantity-controls"><button onClick={() => changeQuantity(lineKey, -1)} aria-label={`Decrease ${item?.name}`}>−</button><b>{line.quantity}</b><button onClick={() => changeQuantity(lineKey, 1)} aria-label={`Increase ${item?.name}`}>＋</button></span></div></div>; })}
                 {cart.length === 0 && !currentOrder && <div className="cart-empty"><span>＋</span><b>Your ticket is looking fresh</b><small>Add menu items to get started</small></div>}
               </div>
-              <button className="add-note" onClick={() => setNotice("Order notes can be added in the next workflow pass.")}>＋ &nbsp; Add a note or special request</button>
+              <button className="add-note" onClick={() => setNotice("Add item-specific instructions by customizing a menu item.")}>＋ &nbsp; Add a note or special request</button>
               <div className="totals"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Tax <small>(8%)</small></span><b>{money(tax)}</b></div><div className="total-line"><span>Total</span><b>{money(total)}</b></div></div>
               {currentOrder && cart.length === 0 ? <button className="send-button checkout-button" onClick={() => setCheckoutOrderId(currentOrder.id)}><span>Go to checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)} <i>→</i></b></button> : <button className="send-button" disabled={cart.length === 0} onClick={placeOrder}><span>Send to kitchen</span><b>{money(total)} <i>→</i></b></button>}
               <div className="ticket-help"><span>◉</span> You can split the bill at checkout</div>
@@ -240,8 +265,13 @@ export default function Home() {
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
       {notice && <div role="status" className="toast"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss notification">×</button></div>}
+      {customizingItem && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCustomizingItem(null); }}><section className="payment-dialog item-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-item-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CUSTOMIZE ITEM</span><h2 id="custom-item-title">{customizingItem.name}</h2><p>{customizingItem.description}</p></div><button className="payment-close" aria-label="Close item options" onClick={() => setCustomizingItem(null)}>×</button></div>
+        <div className="modifier-section"><div className="modifier-heading"><b>Add-ons &amp; preferences</b><small>Optional · choose any that apply</small></div>{modifiersByCategory[customizingItem.category].map((modifier) => <label className="modifier-option" key={modifier.id}><input type="checkbox" checked={customModifierIds.includes(modifier.id)} onChange={(event) => setCustomModifierIds((previous) => event.target.checked ? [...previous, modifier.id] : previous.filter((id) => id !== modifier.id))} /><span>{modifier.label}</span><b>{modifier.price > 0 ? `+${money(modifier.price)}` : "No charge"}</b></label>)}</div>
+        <label className="instruction-field"><span>Kitchen instructions</span><textarea maxLength={120} value={customNote} onChange={(event) => setCustomNote(event.target.value)} placeholder="For example: sauce on the side, well done..."/><small>{customNote.length}/120</small></label>
+        <div className="customize-footer"><div className="quantity-controls customize-quantity"><button aria-label="Decrease item quantity" disabled={customQuantity <= 1} onClick={() => setCustomQuantity((quantity) => Math.max(1, quantity - 1))}>−</button><b>{customQuantity}</b><button aria-label="Increase item quantity" onClick={() => setCustomQuantity((quantity) => quantity + 1)}>＋</button></div><button className="send-button payment-submit" onClick={confirmCustomizedItem}><span>Add to ticket</span><b>{money((customizingItem.price + modifiersByCategory[customizingItem.category].filter((modifier) => customModifierIds.includes(modifier.id)).reduce((sum, modifier) => sum + modifier.price, 0)) * customQuantity)} <i>→</i></b></button></div>
+      </section></div>}
       {checkoutOrder && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOrderId(null); }}><section className="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">PAYMENT · {checkoutOrder.id}</span><h2 id="payment-title">Complete checkout</h2><p>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : "Takeaway order"} · {checkoutOrder.items.reduce((sum, line) => sum + line.quantity, 0)} items</p></div><button className="payment-close" aria-label="Close checkout" onClick={() => setCheckoutOrderId(null)}>×</button></div>
-        <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div key={line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}</span><b>{money((item?.price ?? 0) * line.quantity)}</b></div>; })}</div>
+        <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small className="payment-line-details">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>; })}</div>
         <label className="discount-row"><span>Discount</span><select value={discountPercent} onChange={(event) => setDiscountPercent(Number(event.target.value))}><option value={0}>No discount</option><option value={5}>5% off</option><option value={10}>10% off</option><option value={15}>15% off</option></select></label>
         <div className="payment-totals"><div><span>Subtotal</span><b>{money(checkoutSubtotal)}</b></div>{discountPercent > 0 && <div><span>Discount ({discountPercent}%)</span><b className="discount-value">−{money(checkoutDiscount)}</b></div>}<div><span>Tax <small>(8% after discount)</small></span><b>{money(checkoutTax)}</b></div><div className="payment-total"><span>Amount due</span><b>{money(checkoutTotal)}</b></div></div>
         {!splitPayment && <><div className="payment-method-heading"><b>Payment method</b><span>SIMULATED PAYMENT</span></div><div className="payment-methods">{(["UPI", "Card", "Cash"] as const).map((method) => <button key={method} className={paymentMethod === method ? "method-selected" : ""} aria-pressed={paymentMethod === method} onClick={() => setPaymentMethod(method)}><span>{method === "UPI" ? "⌁" : method === "Card" ? "▣" : "₹"}</span>{method}</button>)}</div></>}
@@ -268,13 +298,13 @@ function WorkflowPanel({ view, data, setView, setTableStatus, setOrderStatus, tr
   const [reportRange, setReportRange] = useState("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid");
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
-  const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + (itemById(line.menuItemId)?.price ?? 0) * line.quantity, 0);
+  const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   const statusText: Record<Order["status"], string> = { new: "New", preparing: "Preparing", ready: "Ready", served: "Served", paid: "Paid" };
 
   if (view === "Kitchen") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Live kitchen queue</h2><p>Move each ticket through prep as the team works.</p></div><span className="live-pill"><i /> LIVE</span></div>
     <div className="kitchen-board">{openOrders.length === 0 && <div className="workflow-empty">No open tickets. New orders will appear here.</div>}
-      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {order.status === "new" ? "just now" : order.status === "ready" ? "12 min ago" : "18 min ago"}</span>{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}</div></article>)}
+      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {order.status === "new" ? "just now" : order.status === "ready" ? "12 min ago" : "18 min ago"}</span>{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}</div></article>)}
     </div>
   </div>;
 

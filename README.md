@@ -17,6 +17,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Visual dining-room table selector with Available, Occupied, Reserved, and Cleaning states.
 - Searchable, category-filtered menu with sample dishes and prices.
 - Dine-in and takeaway tickets, quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
+- Item customization with category-specific add-ons, per-item quantities, and kitchen instructions.
 - Simulated checkout that records a paid status and moves the table to Cleaning.
 - Kitchen queue with new → preparing → ready → served ticket transitions.
 - Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal bill splits for 2–8 guests with individual payment methods.
@@ -43,7 +44,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 ## Assumptions and limitations
 
 - Sales and headline metric values are sample figures; they are not calculated from a complete transaction ledger.
-- Payment is simulated. Bill splitting by item, modifiers, cancellation, table merging, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes and ticket transfer are available in the floor management view.
+- Payment is simulated. Bill splitting by selected items, cancellation, table merging, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes and ticket transfer are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
 - The current visual theme is light mode; dark mode and automated workflow tests remain to be implemented.
