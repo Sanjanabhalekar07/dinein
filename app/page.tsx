@@ -4,6 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
+type StaffRole = "Manager" | "Cashier" | "Waiter" | "Kitchen";
+const navigationItems: { view: string; label: string; icon: string }[] = [
+  { view: "New order", label: "New order", icon: "▦" },
+  { view: "Floor plan", label: "Floor plan", icon: "⌑" },
+  { view: "Kitchen", label: "Kitchen display", icon: "♨" },
+  { view: "Menu", label: "Menu", icon: "☷" },
+  { view: "Reports", label: "Reports", icon: "▤" },
+];
+const roleViews: Record<StaffRole, string[]> = {
+  Manager: ["New order", "Floor plan", "Kitchen", "Menu", "Reports"],
+  Cashier: ["New order", "Floor plan", "Reports"],
+  Waiter: ["New order", "Floor plan", "Kitchen"],
+  Kitchen: ["Kitchen"],
+};
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
 const moneyRounded = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const itemById = (id: string, items: MenuItem[] = menu) => items.find((item) => item.id === id);
@@ -54,6 +68,8 @@ export default function Home() {
   const [menuFormEmoji, setMenuFormEmoji] = useState("\u{1F37D}");
   const [menuFormAvailable, setMenuFormAvailable] = useState(true);
   const [menuEditorOpen, setMenuEditorOpen] = useState(false);
+  const [role, setRole] = useState<StaffRole>("Manager");
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [], menuItems: saved.menuItems ?? menu }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -101,6 +117,9 @@ export default function Home() {
   const dateLabel = now ? new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" }).format(now) : "";
   const servicePeriod = now ? (now.getHours() < 11 ? "BREAKFAST" : now.getHours() < 16 ? "LUNCH" : now.getHours() < 22 ? "DINNER" : "LATE NIGHT") : "SERVICE";
   const greeting = now ? (now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening") : "Welcome";
+  const allowedViews = roleViews[role];
+  const canTakePayment = role === "Manager" || role === "Cashier";
+  const canManageMenu = role === "Manager";
   const currentOrder = selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined;
   const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid" && order.status !== "cancelled");
   const orderPendingCancellation = data.orders.find((order) => order.id === cancelOrderId && order.status !== "paid" && order.status !== "cancelled");
@@ -313,6 +332,13 @@ export default function Home() {
     setNotice("A new 4-seat table was added to the floor.");
   }
 
+  function changeRole(nextRole: StaffRole) {
+    setRole(nextRole);
+    setView(roleViews[nextRole][0]);
+    setCart([]);
+    setRoleMenuOpen(false);
+  }
+
   function tableOrderLines(table: Table) {
     return activeOrders.filter((order) => order.tableId === table.id).flatMap((order) => order.items);
   }
@@ -327,18 +353,14 @@ export default function Home() {
         <a className="brand" href="#home" aria-label="Dine In home"><span className="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="9.2"/><circle cx="16" cy="16" r="5.7"/><path d="M4.5 6.5v6m-2.1-6v4.1a2.1 2.1 0 0 0 4.2 0V6.5M4.5 12.6v12.9m23-19-3.2 8.2v10.8m0-10.8h3.2V6.5"/></svg></span><span>Dine In<small>RESTAURANT OS</small></span></a>
         <div className="side-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
-          <button className={`nav-link ${view === "New order" || view === "Takeaway" ? "active" : ""}`} onClick={() => setView("New order")}><span className="nav-icon">▦</span> New order <kbd>⌘ 1</kbd></button>
-          <button className={`nav-link ${view === "Floor plan" ? "active" : ""}`} onClick={() => setView("Floor plan")}><span className="nav-icon">⌑</span> Floor plan</button>
-          <button className={`nav-link ${view === "Kitchen" ? "active" : ""}`} onClick={() => setView("Kitchen")}><span className="nav-icon">♨</span> Kitchen display<span className="nav-badge">{activeOrders.filter((order) => order.status === "new" || order.status === "preparing").length}</span></button>
-          <button className={`nav-link ${view === "Menu" ? "active" : ""}`} onClick={() => setView("Menu")}><span className="nav-icon">☷</span> Menu</button>
-          <button className={`nav-link ${view === "Reports" ? "active" : ""}`} onClick={() => setView("Reports")}><span className="nav-icon">▤</span> Reports</button>
+          {navigationItems.filter((item) => allowedViews.includes(item.view)).map((item) => <button key={item.view} className={`nav-link ${view === item.view || (item.view === "New order" && view === "Takeaway") ? "active" : ""}`} onClick={() => setView(item.view)}><span className="nav-icon">{item.icon}</span> {item.label}{item.view === "Kitchen" && <span className="nav-badge">{activeOrders.filter((order) => order.status === "new" || order.status === "preparing").length}</span>}</button>)}
         </nav>
         <div className="sidebar-bottom">
           <div className="side-label">TODAY AT A GLANCE</div>
           <div className="mini-stats"><span>Paid orders today</span><strong>{paidToday.size}</strong></div>
           <div className="mini-stats"><span>Payments recorded</span><strong>{todayTransactions.length}</strong></div>
           <div className="side-divider" />
-          <button className="staff-card" onClick={() => setNotice("Signed in as Alex Morgan · Manager") }><span className="avatar">AM</span><span><b>Alex Morgan</b><small>Manager</small></span><span className="more">···</span></button>
+          <div className="staff-role-wrap"><button className="staff-card" aria-expanded={roleMenuOpen} aria-haspopup="menu" onClick={() => setRoleMenuOpen((open) => !open)}><span className="avatar">AM</span><span><b>Alex Morgan</b><small>{role} ? Demo role</small></span><span className="more">???</span></button>{roleMenuOpen && <div className="role-menu" role="menu" aria-label="Choose demo staff role">{(["Manager", "Cashier", "Waiter", "Kitchen"] as const).map((nextRole) => <button role="menuitemradio" aria-checked={role === nextRole} className={role === nextRole ? "selected-role" : ""} key={nextRole} onClick={() => changeRole(nextRole)}><span>{nextRole}</span><small>{role === nextRole ? "Current role" : nextRole === "Manager" ? "Full workspace access" : nextRole === "Cashier" ? "Orders and payments" : nextRole === "Waiter" ? "Floor and kitchen" : "Kitchen display"}</small></button>)}</div>}</div>
         </div>
       </aside>
 
@@ -349,7 +371,7 @@ export default function Home() {
         </header>
 
         <section className="page-content">
-          <div className="welcome-row"><div><div className="eyebrow">{servicePeriod} SERVICE <span>·</span> LOCAL</div><h1>{view === "Floor plan" ? "Your floor, at a glance." : view === "Kitchen" ? "Kitchen display" : view === "Reports" ? "Service overview" : view === "Menu" ? "Explore the menu." : greeting + ", Alex"}</h1><p className="subtitle">{view === "New order" ? "Live service overview from this device." : "A live snapshot of your restaurant service."}</p></div><div className="welcome-actions"><button className="secondary-button" onClick={() => setView("Reports")}>◷ <span>Shift summary</span></button><button className="primary-button" onClick={() => { setView("New order"); setCart([]); }}>＋ <span>New order</span></button></div></div>
+          <div className="welcome-row"><div><div className="eyebrow">{servicePeriod} SERVICE <span>·</span> LOCAL</div><h1>{view === "Floor plan" ? "Your floor, at a glance." : view === "Kitchen" ? "Kitchen display" : view === "Reports" ? "Service overview" : view === "Menu" ? "Explore the menu." : greeting + ", Alex"}</h1><p className="subtitle">{view === "New order" ? "Live service overview from this device." : "A live snapshot of your restaurant service."}</p></div><div className="welcome-actions">{allowedViews.includes("Reports") && <button className="secondary-button" onClick={() => setView("Reports")}>◷ <span>Shift summary</span></button>}{role !== "Kitchen" && <button className="primary-button" onClick={() => { setView("New order"); setCart([]); }}>＋ <span>New order</span></button>}</div></div>
 
           {view === "New order" || view === "Takeaway" ? <>
           <div className="metric-grid">
@@ -395,7 +417,7 @@ export default function Home() {
                 </button>)}
                 {visibleMenu.length === 0 && <div className="empty-search">No menu items match “{search}”.</div>}
               </div>
-              <div className="menu-footer"><span>Showing <b>{visibleMenu.length}</b> of {menuItems.length} items</span><button onClick={() => { setCategory("All"); setSearch(""); setView("Menu"); }}>Manage menu ↗</button></div>
+              <div className="menu-footer"><span>Showing <b>{visibleMenu.length}</b> of {menuItems.length} items</span>{canManageMenu && <button onClick={() => { setCategory("All"); setSearch(""); setView("Menu"); }}>Manage menu ↗</button>}</div>
             </section>
 
             <section className="panel ticket-panel">
@@ -410,7 +432,7 @@ export default function Home() {
               </div>
               <button className="add-note" onClick={() => setNotice("Add item-specific instructions by customizing a menu item.")}>＋ &nbsp; Add a note or special request</button>
               <div className="totals"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Tax <small>(8%)</small></span><b>{money(tax)}</b></div><div className="total-line"><span>Total</span><b>{money(total)}</b></div></div>
-              {currentOrder && cart.length === 0 ? <button className="send-button checkout-button" onClick={() => setCheckoutOrderId(currentOrder.id)}><span>Go to checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)} <i>→</i></b></button> : <button className="send-button" disabled={cart.length === 0} onClick={placeOrder}><span>Send to kitchen</span><b>{money(total)} <i>→</i></b></button>}
+              {currentOrder && cart.length === 0 ? canTakePayment ? <button className="send-button checkout-button" onClick={() => setCheckoutOrderId(currentOrder.id)}><span>Go to checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)} <i>?</i></b></button> : <button className="send-button" disabled><span>Awaiting cashier checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)}</b></button> : <button className="send-button" disabled={cart.length === 0} onClick={placeOrder}><span>Send to kitchen</span><b>{money(total)} <i>?</i></b></button>}
               <div className="ticket-help"><span>◉</span> You can split the bill at checkout</div>
             </section>
           </div>
