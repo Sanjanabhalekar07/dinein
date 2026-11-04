@@ -5,6 +5,7 @@ import { initialData, loadPosData, menu, savePosData, type Category, type MenuIt
 
 const categories: Category[] = ["All", "Starters", "Mains", "Pizza", "Drinks", "Desserts"];
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
+const moneyRounded = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const itemById = (id: string) => menu.find((item) => item.id === id);
 const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 1.5 }, { id: "no-garnish", label: "No garnish", price: 0 }],
@@ -34,6 +35,7 @@ export default function Home() {
   const [customQuantity, setCustomQuantity] = useState(1);
   const [customModifierIds, setCustomModifierIds] = useState<string[]>([]);
   const [customNote, setCustomNote] = useState("");
+  const [clockNow, setClockNow] = useState<number | null>(null);
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [] }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -49,12 +51,36 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    let timer: number;
+    const updateClock = () => {
+      setClockNow(Date.now());
+      timer = window.setTimeout(updateClock, 60000);
+    };
+    timer = window.setTimeout(updateClock, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const visibleMenu = useMemo(() => menu.filter((item) => (category === "All" || item.category === category) && `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())), [category, search]);
   const subtotal = cart.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
   const activeOrders = data.orders.filter((order) => order.status !== "paid");
   const occupied = data.tables.filter((table) => table.status === "occupied").length;
+  const now = clockNow === null ? null : new Date(clockNow);
+  const todayTransactions = now ? (data.transactions ?? []).filter((transaction) => new Date(transaction.createdAt).toDateString() === now.toDateString()) : [];
+  const paidToday = new Set(todayTransactions.map((transaction) => transaction.orderId));
+  const todaySales = todayTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+  const completedDurations = [...paidToday].map((orderId) => {
+    const order = data.orders.find((candidate) => candidate.id === orderId);
+    const paidAt = Math.max(...todayTransactions.filter((transaction) => transaction.orderId === orderId).map((transaction) => new Date(transaction.createdAt).getTime()));
+    return order ? Math.max(0, (paidAt - new Date(order.createdAt).getTime()) / 60000) : null;
+  }).filter((duration): duration is number => duration !== null);
+  const averageTicketTime = completedDurations.length ? Math.round(completedDurations.reduce((sum, duration) => sum + duration, 0) / completedDurations.length) : null;
+  const minutesAgo = (date: string) => clockNow === null ? "—" : (() => { const minutes = Math.max(0, Math.floor((clockNow - new Date(date).getTime()) / 60000)); return minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`; })();
+  const dateLabel = now ? new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" }).format(now) : "";
+  const servicePeriod = now ? (now.getHours() < 11 ? "BREAKFAST" : now.getHours() < 16 ? "LUNCH" : now.getHours() < 22 ? "DINNER" : "LATE NIGHT") : "SERVICE";
+  const greeting = now ? (now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening") : "Welcome";
   const currentOrder = selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined;
   const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid");
   const checkoutSubtotal = checkoutOrder ? lineTotal(checkoutOrder.items) : 0;
@@ -181,8 +207,8 @@ export default function Home() {
         </nav>
         <div className="sidebar-bottom">
           <div className="side-label">TODAY AT A GLANCE</div>
-          <div className="mini-stats"><span>Orders served</span><strong>{34 + data.orders.filter((order) => order.status === "paid").length}</strong></div>
-          <div className="mini-stats"><span>Table turns</span><strong>2.4 <small>↗</small></strong></div>
+          <div className="mini-stats"><span>Paid orders today</span><strong>{paidToday.size}</strong></div>
+          <div className="mini-stats"><span>Payments recorded</span><strong>{todayTransactions.length}</strong></div>
           <div className="side-divider" />
           <button className="staff-card" onClick={() => setNotice("Signed in as Alex Morgan · Manager") }><span className="avatar">AM</span><span><b>Alex Morgan</b><small>Manager</small></span><span className="more">···</span></button>
         </div>
@@ -191,18 +217,18 @@ export default function Home() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumb">Workspace <span>/</span> <b>{view}</b></div>
-          <div className="top-actions"><span className="open-status"><i /> Service is live</span><span className="top-divider" /><span className="date-label">Tue, June 18, 2024</span><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
+          <div className="top-actions"><span className="open-status"><i /> POS ready</span><span className="top-divider" /><span className="date-label">{dateLabel}</span><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
         </header>
 
         <section className="page-content">
-          <div className="welcome-row"><div><div className="eyebrow">TUESDAY SERVICE <span>·</span> LUNCH</div><h1>{view === "Floor plan" ? "Your floor, at a glance." : view === "Kitchen" ? "Kitchen display" : view === "Reports" ? "Service overview" : view === "Menu" ? "Explore the menu." : "Good afternoon, Alex"}</h1><p className="subtitle">{view === "New order" ? "Let’s make today a great service." : "A live snapshot of your restaurant service."}</p></div><div className="welcome-actions"><button className="secondary-button" onClick={() => setNotice("Shift summary is up to date.")}>◷ <span>Shift summary</span></button><button className="primary-button" onClick={() => { setView("New order"); setCart([]); }}>＋ <span>New order</span></button></div></div>
+          <div className="welcome-row"><div><div className="eyebrow">{servicePeriod} SERVICE <span>·</span> LOCAL</div><h1>{view === "Floor plan" ? "Your floor, at a glance." : view === "Kitchen" ? "Kitchen display" : view === "Reports" ? "Service overview" : view === "Menu" ? "Explore the menu." : greeting + ", Alex"}</h1><p className="subtitle">{view === "New order" ? "Live service overview from this device." : "A live snapshot of your restaurant service."}</p></div><div className="welcome-actions"><button className="secondary-button" onClick={() => setView("Reports")}>◷ <span>Shift summary</span></button><button className="primary-button" onClick={() => { setView("New order"); setCart([]); }}>＋ <span>New order</span></button></div></div>
 
           {view === "New order" || view === "Takeaway" ? <>
           <div className="metric-grid">
-            <article className="metric-card"><div className="metric-top"><span>Today’s sales</span><span className="metric-icon sales-icon">↗</span></div><div className="metric-value">₹2,840<span className="trend">↗ 12.8%</span></div><div className="metric-foot">vs. ₹2,518 yesterday</div><div className="sparkline"><svg viewBox="0 0 160 35" role="img" aria-label="Sales trend rising"><path d="M1 29 C15 27 19 20 30 23 S50 30 61 19 S77 21 87 14 S102 22 112 11 S127 17 138 8 S151 10 159 3" fill="none" stroke="currentColor" strokeWidth="2.4" /></svg></div></article>
-            <article className="metric-card"><div className="metric-top"><span>Active orders</span><span className="metric-icon order-icon">☷</span></div><div className="metric-value">{activeOrders.length + 8}<span className="metric-unit">orders</span></div><div className="metric-foot"><b className="green-text">{activeOrders.filter((order) => order.status === "preparing").length + 3} preparing</b><span className="foot-sep">·</span>{activeOrders.filter((order) => order.status === "ready").length + 1} ready</div><div className="metric-progress"><i style={{ width: "62%" }} /></div></article>
-            <article className="metric-card"><div className="metric-top"><span>Tables occupied</span><span className="metric-icon table-icon">⌑</span></div><div className="metric-value">{occupied}<span className="metric-unit">/ {data.tables.length} tables</span></div><div className="metric-foot"><span className="occupancy-dots"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span> <span>{Math.round((occupied / data.tables.length) * 100)}% capacity</span></div><div className="metric-progress occupancy"><i style={{ width: `${Math.max(8, (occupied / data.tables.length) * 100)}%` }} /></div></article>
-            <article className="metric-card"><div className="metric-top"><span>Avg. ticket time</span><span className="metric-icon time-icon">◷</span></div><div className="metric-value">18<span className="metric-unit">min</span><span className="trend calm">↘ 2 min</span></div><div className="metric-foot">Looking good <span className="foot-sep">·</span> target under 20 min</div><div className="time-bars"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></article>
+            <article className="metric-card"><div className="metric-top"><span>Today sales</span><span className="metric-icon sales-icon">₹</span></div><div className="metric-value metric-currency">{moneyRounded(todaySales)}</div><div className="metric-foot">{todayTransactions.length} payments recorded today</div></article>
+            <article className="metric-card"><div className="metric-top"><span>Open orders</span><span className="metric-icon order-icon">☷</span></div><div className="metric-value">{activeOrders.length}<span className="metric-unit">orders</span></div><div className="metric-foot"><b className="green-text">{activeOrders.filter((order) => order.status === "preparing").length} preparing</b><span className="foot-sep">·</span>{activeOrders.filter((order) => order.status === "ready").length} ready</div></article>
+            <article className="metric-card"><div className="metric-top"><span>Tables occupied</span><span className="metric-icon table-icon">⌑</span></div><div className="metric-value">{occupied}<span className="metric-unit">/ {data.tables.length} tables</span></div><div className="metric-foot">{data.tables.length - occupied} available · {Math.round((occupied / Math.max(1, data.tables.length)) * 100)}% capacity</div><div className="metric-progress occupancy"><i style={{ width: `${Math.min(100, (occupied / Math.max(1, data.tables.length)) * 100)}%` }} /></div></article>
+            <article className="metric-card"><div className="metric-top"><span>Avg. ticket time</span><span className="metric-icon time-icon">◷</span></div><div className="metric-value">{averageTicketTime ?? "—"}{averageTicketTime !== null && <span className="metric-unit">min</span>}</div><div className="metric-foot">{completedDurations.length} completed tickets today</div></article>
           </div>
 
           {view === "New order" || view === "Takeaway" ? <div className="workspace-heading"><div><h2>Start an order</h2><p>Choose a table, then add a few guest favorites.</p></div><button className="text-button" onClick={() => setView("Floor plan")}>View floor plan <span>↗</span></button></div> : null}
@@ -258,9 +284,9 @@ export default function Home() {
             </section>
           </div>
 
-          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index}`}>{order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}</small></span><span className="activity-time">{order.status === "new" ? "just now" : order.status === "ready" ? "12m ago" : "18m ago"}</span></div>)}</div></section>
-            <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length + 3}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length + 1}</b></div><div><span>AVG TIME</span><b>18 <small>min</small></b></div><div className="queue-art">♨</div></div></section></div>
-          </> : <WorkflowPanel view={view} data={data} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} transferOrder={transferOrder} toggleMenuAvailability={toggleMenuAvailability} />}
+          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index}`}>{order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
+            <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length}</b></div><div><span>AVG TIME</span><b>{averageTicketTime ?? "—"} <small>{averageTicketTime === null ? "" : "min"}</small></b></div><div className="queue-art">♨</div></div></section></div>
+          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} transferOrder={transferOrder} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
@@ -286,6 +312,7 @@ export default function Home() {
 type WorkflowProps = {
   view: string;
   data: PosData;
+  clockNow: number | null;
   setView: (view: string) => void;
   setTableStatus: (tableId: string, status: Table["status"]) => void;
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
@@ -293,18 +320,31 @@ type WorkflowProps = {
   toggleMenuAvailability: (menuItemId: string) => void;
 };
 
-function WorkflowPanel({ view, data, setView, setTableStatus, setOrderStatus, transferOrder, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, transferOrder, toggleMenuAvailability }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid");
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
   const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
+  const minutesAgo = (date: string) => clockNow === null ? "—" : (() => { const minutes = Math.max(0, Math.floor((clockNow - new Date(date).getTime()) / 60000)); return minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`; })();
+  const rangeEnd = clockNow === null ? null : new Date(clockNow);
+  const rangeStart = rangeEnd ? new Date(rangeEnd) : null;
+  if (rangeStart) {
+    rangeStart.setHours(0, 0, 0, 0);
+    if (reportRange === "This week") rangeStart.setDate(rangeStart.getDate() - rangeStart.getDay());
+    if (reportRange === "This month") rangeStart.setDate(1);
+  }
+  const withinRange = (createdAt: string) => rangeStart !== null && rangeEnd !== null && new Date(createdAt) >= rangeStart && new Date(createdAt) <= rangeEnd;
+  const reportOrders = data.orders.filter((order) => withinRange(order.createdAt));
+  const reportTransactions = (data.transactions ?? []).filter((transaction) => withinRange(transaction.createdAt));
+  const completedInRange = new Set(reportTransactions.map((transaction) => transaction.orderId));
+  const openInRange = reportOrders.filter((order) => order.status !== "paid").length;
   const statusText: Record<Order["status"], string> = { new: "New", preparing: "Preparing", ready: "Ready", served: "Served", paid: "Paid" };
 
   if (view === "Kitchen") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Live kitchen queue</h2><p>Move each ticket through prep as the team works.</p></div><span className="live-pill"><i /> LIVE</span></div>
     <div className="kitchen-board">{openOrders.length === 0 && <div className="workflow-empty">No open tickets. New orders will appear here.</div>}
-      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {order.status === "new" ? "just now" : order.status === "ready" ? "12 min ago" : "18 min ago"}</span>{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}</div></article>)}
+      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span>{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}</div></article>)}
     </div>
   </div>;
 
@@ -326,7 +366,7 @@ function WorkflowPanel({ view, data, setView, setTableStatus, setOrderStatus, tr
 
   return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Service reports</h2><p>Review the activity recorded on this device.</p></div><select className="report-select" value={reportRange} onChange={(event) => setReportRange(event.target.value)}><option>Today</option><option>This week</option><option>This month</option></select></div>
-    <div className="report-metrics"><article className="workflow-card report-metric"><span>RECORDED ORDERS</span><b>{data.orders.length}</b><small>{data.orders.filter((order) => order.status === "paid").length} completed · {openOrders.length} open</small></article><article className="workflow-card report-metric"><span>COMPLETED SALES</span><b>{money(2840 + (data.transactions ?? []).reduce((sum, transaction) => sum + transaction.amount, 0))}</b><small>Includes sample opening total</small></article><article className="workflow-card report-metric"><span>TABLE OCCUPANCY</span><b>{data.tables.filter((table) => table.status === "occupied").length} / {data.tables.length}</b><small>{data.tables.filter((table) => table.status === "available").length} available right now</small></article><article className="workflow-card report-chart"><div className="report-chart-head"><div><span>SALES PULSE</span><b>{reportRange}</b></div><span className="green-text">+12.8% vs. previous</span></div><div className="chart-area"><div className="chart-y"><span>INR 800</span><span>INR 600</span><span>INR 400</span><span>INR 200</span><span>INR 0</span></div><div className="chart-plot"><div className="chart-grid-lines"><i/><i/><i/><i/><i/></div><svg viewBox="0 0 700 170" preserveAspectRatio="none" role="img" aria-label="Sample sales trend"><defs><linearGradient id="sales-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#8dbb96" stopOpacity=".25"/><stop offset="1" stopColor="#8dbb96" stopOpacity="0"/></linearGradient></defs><path d="M0,132 C46,120 58,98 103,111 S157,145 205,90 S275,108 315,76 S365,88 412,63 S470,83 511,49 S575,67 610,30 S661,44 700,12 L700,170 L0,170Z" fill="url(#sales-fill)"/><path d="M0,132 C46,120 58,98 103,111 S157,145 205,90 S275,108 315,76 S365,88 412,63 S470,83 511,49 S575,67 610,30 S661,44 700,12" fill="none" stroke="#4c9066" strokeWidth="3" vectorEffect="non-scaling-stroke"/></svg><div className="chart-x"><span>10 AM</span><span>11 AM</span><span>12 PM</span><span>1 PM</span><span>2 PM</span><span>3 PM</span><span>4 PM</span></div></div></div></article></div>
+    <div className="report-metrics"><article className="workflow-card report-metric"><span>ORDERS IN PERIOD</span><b>{reportOrders.length}</b><small>{completedInRange.size} completed / {openInRange} open</small></article><article className="workflow-card report-metric"><span>COMPLETED SALES</span><b>{money(reportTransactions.reduce((sum, transaction) => sum + transaction.amount, 0))}</b><small>From recorded payments in this period</small></article><article className="workflow-card report-metric"><span>TABLE OCCUPANCY</span><b>{data.tables.filter((table) => table.status === "occupied").length} / {data.tables.length}</b><small>{data.tables.filter((table) => table.status === "available").length} available right now</small></article><article className="workflow-card report-chart"><div className="report-chart-head"><div><span>SAMPLE SALES PULSE</span><b>{reportRange}</b></div><span className="green-text">Illustrative sample data</span></div><div className="chart-area"><div className="chart-y"><span>INR 800</span><span>INR 600</span><span>INR 400</span><span>INR 200</span><span>INR 0</span></div><div className="chart-plot"><div className="chart-grid-lines"><i/><i/><i/><i/><i/></div><svg viewBox="0 0 700 170" preserveAspectRatio="none" role="img" aria-label="Sample sales trend"><defs><linearGradient id="sales-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#8dbb96" stopOpacity=".25"/><stop offset="1" stopColor="#8dbb96" stopOpacity="0"/></linearGradient></defs><path d="M0,132 C46,120 58,98 103,111 S157,145 205,90 S275,108 315,76 S365,88 412,63 S470,83 511,49 S575,67 610,30 S661,44 700,12 L700,170 L0,170Z" fill="url(#sales-fill)"/><path d="M0,132 C46,120 58,98 103,111 S157,145 205,90 S275,108 315,76 S365,88 412,63 S470,83 511,49 S575,67 610,30 S661,44 700,12" fill="none" stroke="#4c9066" strokeWidth="3" vectorEffect="non-scaling-stroke"/></svg><div className="chart-x"><span>10 AM</span><span>11 AM</span><span>12 PM</span><span>1 PM</span><span>2 PM</span><span>3 PM</span><span>4 PM</span></div></div></div></article></div>
     <section className="workflow-card transaction-history"><div className="transaction-history-head"><div><h3>Transaction history</h3><p>Completed simulated payments on this device.</p></div><span>{(data.transactions ?? []).length} payments</span></div>{(data.transactions ?? []).length === 0 ? <div className="transaction-empty">No completed payments yet.</div> : <div className="transaction-list">{[...(data.transactions ?? [])].slice(-8).reverse().map((transaction) => <div className="transaction-row" key={transaction.id}><span className="transaction-icon">{transaction.method === "UPI" ? "⌁" : transaction.method === "Card" ? "▣" : "₹"}</span><span className="transaction-description"><b>{transaction.orderId}</b><small>{transaction.splitLabel ? transaction.splitLabel + " - " : ""}{transaction.method} · {new Date(transaction.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</small></span><strong>{money(transaction.amount)}</strong></div>)}</div>}</section>
   </div>;
 }

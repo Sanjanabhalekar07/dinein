@@ -43,7 +43,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 
 ## Assumptions and limitations
 
-- Sales and headline metric values are sample figures; they are not calculated from a complete transaction ledger.
+- Dashboard sales, order, occupancy, and ticket-time metrics are calculated from this device’s records. The sales pulse chart remains illustrative sample data.
 - Payment is simulated. Bill splitting by selected items, cancellation, table merging, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes and ticket transfer are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
