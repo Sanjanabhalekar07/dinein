@@ -8,11 +8,11 @@ const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "curre
 const moneyRounded = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const itemById = (id: string) => menu.find((item) => item.id === id);
 const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
-  Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 1.5 }, { id: "no-garnish", label: "No garnish", price: 0 }],
-  Mains: [{ id: "extra-protein", label: "Extra protein", price: 6 }, { id: "no-onion", label: "No onion", price: 0 }],
-  Pizza: [{ id: "extra-cheese", label: "Extra mozzarella", price: 3 }, { id: "chili-oil", label: "Chili oil", price: 1 }],
-  Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 1 }, { id: "less-ice", label: "Less ice", price: 0 }],
-  Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 4 }, { id: "extra-cream", label: "Extra cream", price: 2 }],
+  Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 30 }, { id: "no-garnish", label: "No garnish", price: 0 }],
+  Mains: [{ id: "extra-protein", label: "Extra protein", price: 120 }, { id: "no-onion", label: "No onion", price: 0 }],
+  Pizza: [{ id: "extra-cheese", label: "Extra mozzarella", price: 60 }, { id: "chili-oil", label: "Chili oil", price: 30 }],
+  Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 30 }, { id: "less-ice", label: "Less ice", price: 0 }],
+  Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 80 }, { id: "extra-cream", label: "Extra cream", price: 40 }],
 };
 const lineUnitPrice = (line: OrderLine) => (itemById(line.menuItemId)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
 
