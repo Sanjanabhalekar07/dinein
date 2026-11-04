@@ -20,6 +20,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Item customization with category-specific add-ons, per-item quantities, and kitchen instructions.
 - Simulated checkout that records a paid status and moves the table to Cleaning.
 - Kitchen queue with new → preparing → ready → served ticket transitions.
+- Ticket cancellation for new or preparing orders, with a saved reason and table cleanup.
 - Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal bill splits for 2–8 guests with individual payment methods.
 - Persisted transaction history with each payment method and amount.
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs.
@@ -44,7 +45,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 ## Assumptions and limitations
 
 - Dashboard sales, order, occupancy, and ticket-time metrics are calculated from this device’s records. The sales pulse chart remains illustrative sample data.
-- Payment is simulated. Bill splitting by selected items, cancellation, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes, order transfer, and table pair merging are available in the floor management view.
+- Payment is simulated. Bill splitting by selected items, role permissions, and full manager CRUD tools are planned follow-up work. Table state changes, order transfer, and table pair merging are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
 - The current visual theme is light mode; dark mode and automated workflow tests remain to be implemented.

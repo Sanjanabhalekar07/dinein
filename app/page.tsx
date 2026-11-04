@@ -36,6 +36,8 @@ export default function Home() {
   const [customModifierIds, setCustomModifierIds] = useState<string[]>([]);
   const [customNote, setCustomNote] = useState("");
   const [clockNow, setClockNow] = useState<number | null>(null);
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("Guest changed their mind");
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [] }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -65,7 +67,7 @@ export default function Home() {
   const subtotal = cart.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
-  const activeOrders = data.orders.filter((order) => order.status !== "paid");
+  const activeOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
   const serviceTables = data.tables.filter((table) => table.status !== "merged");
   const occupied = serviceTables.filter((table) => table.status === "occupied").length;
   const now = clockNow === null ? null : new Date(clockNow);
@@ -83,7 +85,8 @@ export default function Home() {
   const servicePeriod = now ? (now.getHours() < 11 ? "BREAKFAST" : now.getHours() < 16 ? "LUNCH" : now.getHours() < 22 ? "DINNER" : "LATE NIGHT") : "SERVICE";
   const greeting = now ? (now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening") : "Welcome";
   const currentOrder = selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined;
-  const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid");
+  const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid" && order.status !== "cancelled");
+  const orderPendingCancellation = data.orders.find((order) => order.id === cancelOrderId && order.status !== "paid" && order.status !== "cancelled");
   const checkoutSubtotal = checkoutOrder ? lineTotal(checkoutOrder.items) : 0;
   const checkoutDiscount = checkoutSubtotal * discountPercent / 100;
   const checkoutTax = (checkoutSubtotal - checkoutDiscount) * 0.08;
@@ -156,6 +159,23 @@ export default function Home() {
     setNotice(`${orderId} marked ${status}`);
   }
 
+  function cancelOrder(orderId: string, reason: string) {
+    const order = data.orders.find((candidate) => candidate.id === orderId);
+    if (!order || order.status === "paid" || order.status === "cancelled" || order.status === "served") return;
+    setData((previous) => {
+      const orders = previous.orders.map((candidate) => candidate.id === orderId ? { ...candidate, status: "cancelled" as const, cancellationReason: reason.trim() || "No reason provided" } : candidate);
+      const otherOpenOrder = order.tableId && orders.some((candidate) => candidate.id !== orderId && candidate.tableId === order.tableId && candidate.status !== "paid" && candidate.status !== "cancelled");
+      return { ...previous, orders, tables: order.tableId ? previous.tables.map((table) => table.id === order.tableId ? { ...table, status: otherOpenOrder ? "occupied" : "cleaning", guests: otherOpenOrder ? table.guests : undefined } : table) : previous.tables };
+    });
+    setCancelOrderId(null);
+    setNotice(`${order.id} cancelled · ${reason.trim() || "No reason provided"}`);
+  }
+
+  function requestCancellation(orderId: string) {
+    setCancelReason("Guest changed their mind");
+    setCancelOrderId(orderId);
+  }
+
   function setTableStatus(tableId: string, status: Table["status"]) {
     setData((previous) => ({ ...previous, tables: previous.tables.map((table) => table.id === tableId ? { ...table, status, guests: status === "occupied" ? table.guests ?? 2 : undefined } : table) }));
   }
@@ -164,8 +184,8 @@ export default function Home() {
     const sourceId = data.orders.find((order) => order.id === orderId)?.tableId;
     setData((previous) => ({
       ...previous,
-      orders: previous.orders.map((order) => order.id === orderId ? { ...order, tableId: targetId } : order),
-      tables: previous.tables.map((table) => table.id === targetId ? { ...table, status: "occupied", guests: table.guests ?? 2 } : table.id === sourceId && !previous.orders.some((order) => order.id !== orderId && order.tableId === sourceId && order.status !== "paid") ? { ...table, status: "cleaning", guests: undefined } : table),
+      orders: previous.orders.map((order) => order.id === orderId && order.status !== "cancelled" ? { ...order, tableId: targetId } : order),
+      tables: previous.tables.map((table) => table.id === targetId ? { ...table, status: "occupied", guests: table.guests ?? 2 } : table.id === sourceId && !previous.orders.some((order) => order.id !== orderId && order.tableId === sourceId && order.status !== "paid" && order.status !== "cancelled") ? { ...table, status: "cleaning", guests: undefined } : table),
     }));
     setNotice(`${orderId} transferred to table ${data.tables.find((table) => table.id === targetId)?.name}`);
   }
@@ -180,8 +200,8 @@ export default function Home() {
     }
     setData((previous) => ({
       ...previous,
-      orders: previous.orders.map((order) => order.tableId === secondaryId && order.status !== "paid" ? { ...order, tableId: primaryId } : order),
-      tables: previous.tables.map((table) => table.id === primaryId ? { ...table, status: table.status === "occupied" || secondary.status === "occupied" ? "occupied" : "available", guests: (table.guests ?? 0) + (secondary.guests ?? 0) || undefined, mergedBaseStatus: table.status === "merged" ? "available" : table.status, mergedBaseGuests: table.guests } : table.id === secondaryId ? { ...table, status: "merged", mergedInto: primaryId, mergedOrderIds: data.orders.filter((order) => order.tableId === secondaryId && order.status !== "paid").map((order) => order.id), mergedOriginalStatus: table.status === "merged" ? "available" : table.status, mergedOriginalGuests: table.guests, guests: undefined } : table),
+      orders: previous.orders.map((order) => order.tableId === secondaryId && order.status !== "paid" && order.status !== "cancelled" ? { ...order, tableId: primaryId } : order),
+      tables: previous.tables.map((table) => table.id === primaryId ? { ...table, status: table.status === "occupied" || secondary.status === "occupied" ? "occupied" : "available", guests: (table.guests ?? 0) + (secondary.guests ?? 0) || undefined, mergedBaseStatus: table.status === "merged" ? "available" : table.status, mergedBaseGuests: table.guests } : table.id === secondaryId ? { ...table, status: "merged", mergedInto: primaryId, mergedOrderIds: data.orders.filter((order) => order.tableId === secondaryId && order.status !== "paid" && order.status !== "cancelled").map((order) => order.id), mergedOriginalStatus: table.status === "merged" ? "available" : table.status, mergedOriginalGuests: table.guests, guests: undefined } : table),
     }));
     setNotice(`Tables ${primary.name} and ${secondary.name} merged.`);
   }
@@ -192,13 +212,13 @@ export default function Home() {
     const primaryId = secondary.mergedInto;
     const mergedOrderIds = secondary.mergedOrderIds ?? [];
     const secondaryOrders = data.orders.filter((order) => mergedOrderIds.includes(order.id));
-    const hasOpenSecondaryOrders = secondaryOrders.some((order) => order.status !== "paid");
-    const hasPaidSecondaryOrders = secondaryOrders.some((order) => order.status === "paid");
-    const hasRemainingPrimaryOrders = data.orders.some((order) => order.tableId === primaryId && !mergedOrderIds.includes(order.id) && order.status !== "paid");
+    const hasOpenSecondaryOrders = secondaryOrders.some((order) => order.status !== "paid" && order.status !== "cancelled");
+    const hasCompletedSecondaryOrders = secondaryOrders.some((order) => order.status === "paid" || order.status === "cancelled");
+    const hasRemainingPrimaryOrders = data.orders.some((order) => order.tableId === primaryId && !mergedOrderIds.includes(order.id) && order.status !== "paid" && order.status !== "cancelled");
     setData((previous) => ({
       ...previous,
       orders: previous.orders.map((order) => mergedOrderIds.includes(order.id) ? { ...order, tableId: secondaryId } : order),
-      tables: previous.tables.map((table) => table.id === secondaryId ? { ...table, status: hasOpenSecondaryOrders ? "occupied" : hasPaidSecondaryOrders ? "cleaning" : secondary.mergedOriginalStatus ?? "available", guests: hasOpenSecondaryOrders ? secondary.mergedOriginalGuests ?? secondary.seats : hasPaidSecondaryOrders ? undefined : secondary.mergedOriginalGuests, mergedInto: undefined, mergedOrderIds: undefined, mergedOriginalStatus: undefined, mergedOriginalGuests: undefined } : table.id === primaryId ? { ...table, guests: hasRemainingPrimaryOrders ? table.mergedBaseGuests ?? table.seats : table.mergedBaseGuests, status: hasRemainingPrimaryOrders ? "occupied" : table.mergedBaseStatus ?? "available", mergedBaseGuests: undefined, mergedBaseStatus: undefined } : table),
+      tables: previous.tables.map((table) => table.id === secondaryId ? { ...table, status: hasOpenSecondaryOrders ? "occupied" : hasCompletedSecondaryOrders ? "cleaning" : secondary.mergedOriginalStatus ?? "available", guests: hasOpenSecondaryOrders ? secondary.mergedOriginalGuests ?? secondary.seats : hasCompletedSecondaryOrders ? undefined : secondary.mergedOriginalGuests, mergedInto: undefined, mergedOrderIds: undefined, mergedOriginalStatus: undefined, mergedOriginalGuests: undefined } : table.id === primaryId ? { ...table, guests: hasRemainingPrimaryOrders ? table.mergedBaseGuests ?? table.seats : table.mergedBaseGuests, status: hasRemainingPrimaryOrders ? "occupied" : table.mergedBaseStatus ?? "available", mergedBaseGuests: undefined, mergedBaseStatus: undefined } : table),
     }));
     setNotice(`Table ${secondary.name} unmerged from table ${data.tables.find((table) => table.id === primaryId)?.name}.`);
   }
@@ -321,9 +341,9 @@ export default function Home() {
             </section>
           </div>
 
-          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index}`}>{order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
+          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length}</b></div><div><span>AVG TIME</span><b>{averageTicketTime ?? "—"} <small>{averageTicketTime === null ? "" : "min"}</small></b></div><div className="queue-art">♨</div></div></section></div>
-          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
+          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
@@ -333,6 +353,7 @@ export default function Home() {
         <label className="instruction-field"><span>Kitchen instructions</span><textarea maxLength={120} value={customNote} onChange={(event) => setCustomNote(event.target.value)} placeholder="For example: sauce on the side, well done..."/><small>{customNote.length}/120</small></label>
         <div className="customize-footer"><div className="quantity-controls customize-quantity"><button aria-label="Decrease item quantity" disabled={customQuantity <= 1} onClick={() => setCustomQuantity((quantity) => Math.max(1, quantity - 1))}>−</button><b>{customQuantity}</b><button aria-label="Increase item quantity" onClick={() => setCustomQuantity((quantity) => quantity + 1)}>＋</button></div><button className="send-button payment-submit" onClick={confirmCustomizedItem}><span>Add to ticket</span><b>{money((customizingItem.price + modifiersByCategory[customizingItem.category].filter((modifier) => customModifierIds.includes(modifier.id)).reduce((sum, modifier) => sum + modifier.price, 0)) * customQuantity)} <i>→</i></b></button></div>
       </section></div>}
+      {orderPendingCancellation && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCancelOrderId(null); }}><section className="payment-dialog cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CANCEL TICKET · {orderPendingCancellation.id}</span><h2 id="cancel-title">Cancel this order?</h2><p>This removes the ticket from the kitchen queue. The reason will be kept in order history.</p></div><button className="payment-close" aria-label="Close cancellation" onClick={() => setCancelOrderId(null)}>×</button></div><label className="discount-row cancel-reason"><span>Reason</span><select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}><option>Guest changed their mind</option><option>Duplicate order</option><option>Item unavailable</option><option>Long wait time</option><option>Entered by mistake</option></select></label><div className="cancel-dialog-actions"><button onClick={() => setCancelOrderId(null)}>Keep order</button><button onClick={() => cancelOrder(orderPendingCancellation.id, cancelReason)}>Cancel ticket</button></div></section></div>}
       {checkoutOrder && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOrderId(null); }}><section className="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">PAYMENT · {checkoutOrder.id}</span><h2 id="payment-title">Complete checkout</h2><p>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : "Takeaway order"} · {checkoutOrder.items.reduce((sum, line) => sum + line.quantity, 0)} items</p></div><button className="payment-close" aria-label="Close checkout" onClick={() => setCheckoutOrderId(null)}>×</button></div>
         <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small className="payment-line-details">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>; })}</div>
         <label className="discount-row"><span>Discount</span><select value={discountPercent} onChange={(event) => setDiscountPercent(Number(event.target.value))}><option value={0}>No discount</option><option value={5}>5% off</option><option value={10}>10% off</option><option value={15}>15% off</option></select></label>
@@ -353,17 +374,18 @@ type WorkflowProps = {
   setView: (view: string) => void;
   setTableStatus: (tableId: string, status: Table["status"]) => void;
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
+  requestCancellation: (orderId: string) => void;
   transferOrder: (orderId: string, tableId: string) => void;
   mergeTables: (primaryId: string, secondaryId: string) => void;
   unmergeTable: (secondaryId: string) => void;
   toggleMenuAvailability: (menuItemId: string) => void;
 };
 
-function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, requestCancellation, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
-  const openOrders = data.orders.filter((order) => order.status !== "paid");
+  const openOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
   const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
   const minutesAgo = (date: string) => clockNow === null ? "—" : (() => { const minutes = Math.max(0, Math.floor((clockNow - new Date(date).getTime()) / 60000)); return minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`; })();
@@ -378,13 +400,13 @@ function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrder
   const reportOrders = data.orders.filter((order) => withinRange(order.createdAt));
   const reportTransactions = (data.transactions ?? []).filter((transaction) => withinRange(transaction.createdAt));
   const completedInRange = new Set(reportTransactions.map((transaction) => transaction.orderId));
-  const openInRange = reportOrders.filter((order) => order.status !== "paid").length;
-  const statusText: Record<Order["status"], string> = { new: "New", preparing: "Preparing", ready: "Ready", served: "Served", paid: "Paid" };
+  const openInRange = reportOrders.filter((order) => order.status !== "paid" && order.status !== "cancelled").length;
+  const statusText: Record<Order["status"], string> = { new: "New", preparing: "Preparing", ready: "Ready", served: "Served", paid: "Paid", cancelled: "Cancelled" };
 
   if (view === "Kitchen") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Live kitchen queue</h2><p>Move each ticket through prep as the team works.</p></div><span className="live-pill"><i /> LIVE</span></div>
     <div className="kitchen-board">{openOrders.length === 0 && <div className="workflow-empty">No open tickets. New orders will appear here.</div>}
-      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span>{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}</div></article>)}
+      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span><span className="ticket-actions">{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}{(order.status === "new" || order.status === "preparing") && <button className="cancel-ticket" onClick={() => requestCancellation(order.id)}>Cancel</button>}</span></div></article>)}
     </div>
   </div>;
 
