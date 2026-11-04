@@ -24,6 +24,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal bill splits for 2–8 guests with individual payment methods.
 - Persisted transaction history with each payment method and amount.
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs.
+- Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
 - Service report view with live order counts and a clearly labeled sample sales pulse.
 - Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
@@ -40,6 +41,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Tax is currently simulated as 8% after any discount.
 - Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
 - Completing checkout marks the order Paid and moves its table to Cleaning.
+- Reservations require a guest name, future arrival time, and party size within the table’s seating capacity.
 - Takeaway orders have no table assignment.
 
 ## Assumptions and limitations

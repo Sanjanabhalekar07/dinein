@@ -13,7 +13,8 @@ export type MenuItem = {
   popular?: boolean;
 };
 
-export type Table = { id: string; name: string; seats: number; status: TableStatus; guests?: number; mergedInto?: string; mergedOrderIds?: string[]; mergedOriginalStatus?: Exclude<TableStatus, "merged">; mergedOriginalGuests?: number; mergedBaseStatus?: Exclude<TableStatus, "merged">; mergedBaseGuests?: number };
+export type ReservationDetails = { guestName: string; guests: number; time: string };
+export type Table = { id: string; name: string; seats: number; status: TableStatus; guests?: number; reservation?: ReservationDetails; mergedInto?: string; mergedOrderIds?: string[]; mergedOriginalStatus?: Exclude<TableStatus, "merged">; mergedOriginalGuests?: number; mergedBaseStatus?: Exclude<TableStatus, "merged">; mergedBaseGuests?: number };
 export type MenuModifier = { id: string; label: string; price: number };
 export type OrderLine = { id?: string; menuItemId: string; quantity: number; note?: string; modifiers?: MenuModifier[] };
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway"; status: OrderStatus; items: OrderLine[]; createdAt: string; cancellationReason?: string };

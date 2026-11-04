@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type Table } from "@/lib/pos-data";
+import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
@@ -17,6 +17,8 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 80 }, { id: "extra-cream", label: "Extra cream", price: 40 }],
 };
 const lineUnitPrice = (line: OrderLine) => (itemById(line.menuItemId)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
+const dateTimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+const formatReservationTime = (date: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(new Date(date));
 
 export default function Home() {
   const [data, setData] = useState<PosData>(initialData);
@@ -40,6 +42,10 @@ export default function Home() {
   const [clockNow, setClockNow] = useState<number | null>(null);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("Guest changed their mind");
+  const [reservationTableId, setReservationTableId] = useState<string | null>(null);
+  const [reservationGuestName, setReservationGuestName] = useState("");
+  const [reservationGuests, setReservationGuests] = useState(2);
+  const [reservationTime, setReservationTime] = useState("");
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [] }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -89,6 +95,7 @@ export default function Home() {
   const currentOrder = selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined;
   const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid" && order.status !== "cancelled");
   const orderPendingCancellation = data.orders.find((order) => order.id === cancelOrderId && order.status !== "paid" && order.status !== "cancelled");
+  const reservationTable = data.tables.find((table) => table.id === reservationTableId);
   const checkoutSubtotal = checkoutOrder ? lineTotal(checkoutOrder.items) : 0;
   const checkoutDiscount = checkoutSubtotal * discountPercent / 100;
   const checkoutTax = (checkoutSubtotal - checkoutDiscount) * 0.08;
@@ -179,7 +186,31 @@ export default function Home() {
   }
 
   function setTableStatus(tableId: string, status: Table["status"]) {
-    setData((previous) => ({ ...previous, tables: previous.tables.map((table) => table.id === tableId ? { ...table, status, guests: status === "occupied" ? table.guests ?? 2 : undefined } : table) }));
+    setData((previous) => ({ ...previous, tables: previous.tables.map((table) => table.id === tableId ? { ...table, status, guests: status === "occupied" ? table.guests ?? 2 : undefined, reservation: status === "reserved" ? table.reservation : undefined } : table) }));
+  }
+
+  function requestReservation(tableId: string) {
+    const table = data.tables.find((candidate) => candidate.id === tableId);
+    if (!table || table.mergedInto) return;
+    const defaultTime = new Date(Date.now() + 30 * 60000);
+    setReservationTableId(tableId);
+    setReservationGuestName(table.reservation?.guestName ?? "");
+    setReservationGuests(table.reservation?.guests ?? 2);
+    setReservationTime(dateTimeForInput(table.reservation ? new Date(table.reservation.time) : defaultTime));
+  }
+
+  function saveReservation() {
+    const table = data.tables.find((candidate) => candidate.id === reservationTableId);
+    if (!table) return;
+    const capacity = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
+    if (!reservationGuestName.trim()) { setNotice("Enter a guest name for this reservation."); return; }
+    if (reservationGuests < 1 || reservationGuests > capacity) { setNotice(`This table can seat up to ${capacity} guests.`); return; }
+    const time = new Date(reservationTime);
+    if (!reservationTime || Number.isNaN(time.getTime()) || time.getTime() < Date.now()) { setNotice("Choose a future reservation time."); return; }
+    const reservation: ReservationDetails = { guestName: reservationGuestName.trim(), guests: reservationGuests, time: time.toISOString() };
+    setData((previous) => ({ ...previous, tables: previous.tables.map((candidate) => candidate.id === table.id ? { ...candidate, status: "reserved", guests: undefined, reservation } : candidate) }));
+    setReservationTableId(null);
+    setNotice(`Reservation saved for ${reservation.guestName}.`);
   }
 
   function transferOrder(orderId: string, targetId: string) {
@@ -303,7 +334,7 @@ export default function Home() {
                     const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
                     const selectionId = table.mergedInto ?? table.id;
                     return <button key={table.id} onClick={() => { setSelectedTable(selectionId); setCart([]); setView("New order"); }} className={`table-node ${table.status} ${selectedTable === selectionId ? "selected" : ""} table-${index + 1}`} aria-label={`Table ${table.name}, ${table.status}${table.mergedInto ? ` joined with ${primaryTable?.name}` : ""}`}>
-                      <span className="table-top"><b>{table.name}</b><small>· {table.mergedInto ? table.seats : joinedSeats} seats</small></span><span className="table-state">{table.mergedInto ? `Joined · ${primaryTable?.name ?? "—"}` : table.status === "available" ? "Available" : table.status === "occupied" ? `${table.guests ?? joinedSeats} guests` : table.status}</span>{table.status === "occupied" && <span className="table-total">{money(totalAmount)}</span>}
+                      <span className="table-top"><b>{table.name}</b><small>· {table.mergedInto ? table.seats : joinedSeats} seats</small></span><span className="table-state" title={table.reservation ? `Reserved for ${table.reservation.guestName}` : undefined}>{table.mergedInto ? `Joined · ${primaryTable?.name ?? "—"}` : table.status === "available" ? "Available" : table.status === "occupied" ? `${table.guests ?? joinedSeats} guests` : table.status === "reserved" ? table.reservation ? `Reserved · ${formatReservationTime(table.reservation.time)}` : "Reserved" : table.status}</span>{table.status === "occupied" && <span className="table-total">{money(totalAmount)}</span>}
                     </button>;
                   })}
                 </div>
@@ -345,11 +376,12 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length}</b></div><div><span>AVG TIME</span><b>{averageTicketTime ?? "—"} <small>{averageTicketTime === null ? "" : "min"}</small></b></div><div className="queue-art">♨</div></div></section></div>
-          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
+          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
       {notice && <div role="status" className="toast"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss notification">×</button></div>}
+      {reservationTable && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationTableId(null); }}><section className="payment-dialog reservation-dialog" role="dialog" aria-modal="true" aria-labelledby="reservation-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">TABLE {reservationTable.name} · RESERVATION</span><h2 id="reservation-title">{reservationTable.reservation ? "Edit reservation" : "Book this table"}</h2><p>Save the guest details and expected arrival time.</p></div><button className="payment-close" aria-label="Close reservation form" onClick={() => setReservationTableId(null)}>×</button></div><label className="reservation-field"><span>Guest name</span><input autoFocus required maxLength={60} value={reservationGuestName} onChange={(event) => setReservationGuestName(event.target.value)} placeholder="Name for the booking"/></label><div className="reservation-fields-row"><label className="reservation-field"><span>Party size</span><input type="number" min={1} max={reservationTable.seats + data.tables.filter((table) => table.mergedInto === reservationTable.id).reduce((sum, table) => sum + table.seats, 0)} value={reservationGuests} onChange={(event) => setReservationGuests(Number(event.target.value))}/></label><label className="reservation-field"><span>Arrival time</span><input type="datetime-local" required value={reservationTime} onChange={(event) => setReservationTime(event.target.value)}/></label></div><div className="reservation-form-actions">{reservationTable.reservation && <button className="remove-reservation" onClick={() => { setTableStatus(reservationTable.id, "available"); setReservationTableId(null); setNotice("Reservation cancelled."); }}>Cancel reservation</button>}<button className="send-button reservation-save" onClick={saveReservation}><span>Save reservation</span><b>Table {reservationTable.name} <i>→</i></b></button></div></section></div>}
       {customizingItem && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCustomizingItem(null); }}><section className="payment-dialog item-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-item-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CUSTOMIZE ITEM</span><h2 id="custom-item-title">{customizingItem.name}</h2><p>{customizingItem.description}</p></div><button className="payment-close" aria-label="Close item options" onClick={() => setCustomizingItem(null)}>×</button></div>
         <div className="modifier-section"><div className="modifier-heading"><b>Add-ons &amp; preferences</b><small>Optional · choose any that apply</small></div>{modifiersByCategory[customizingItem.category].map((modifier) => <label className="modifier-option" key={modifier.id}><input type="checkbox" checked={customModifierIds.includes(modifier.id)} onChange={(event) => setCustomModifierIds((previous) => event.target.checked ? [...previous, modifier.id] : previous.filter((id) => id !== modifier.id))} /><span>{modifier.label}</span><b>{modifier.price > 0 ? `+${money(modifier.price)}` : "No charge"}</b></label>)}</div>
         <label className="instruction-field"><span>Kitchen instructions</span><textarea maxLength={120} value={customNote} onChange={(event) => setCustomNote(event.target.value)} placeholder="For example: sauce on the side, well done..."/><small>{customNote.length}/120</small></label>
@@ -375,6 +407,7 @@ type WorkflowProps = {
   clockNow: number | null;
   setView: (view: string) => void;
   setTableStatus: (tableId: string, status: Table["status"]) => void;
+  requestReservation: (tableId: string) => void;
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
   requestCancellation: (orderId: string) => void;
   transferOrder: (orderId: string, tableId: string) => void;
@@ -383,7 +416,7 @@ type WorkflowProps = {
   toggleMenuAvailability: (menuItemId: string) => void;
 };
 
-function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, requestCancellation, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
@@ -418,8 +451,9 @@ function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrder
       const orders = openOrders.filter((order) => order.tableId === table.id);
       const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
       return <article className="workflow-card table-manager-card" key={table.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{joinedSeats} SEATS</span><h3>Table {table.name}</h3></div><span className={`status-pill table-status-${table.status}`}>{table.status === "merged" ? "Joined" : table.status}</span></div>
+        {table.reservation && <div className="reservation-details"><span><b>{table.reservation.guestName}</b><small>{table.reservation.guests} guests · {formatReservationTime(table.reservation.time)}</small></span><button onClick={() => requestReservation(table.id)}>Edit booking</button></div>}
         {orders.length ? <div className="table-open-orders">{orders.map((order) => <div key={order.id} className="transfer-row"><span><b>{order.id}</b><small>{order.items.reduce((sum, item) => sum + item.quantity, 0)} items · {money(orderAmount(order))}</small></span><select aria-label={`Transfer order ${order.id}`} value={transferTargets[order.id] ?? ""} onChange={(event) => setTransferTargets((previous) => ({ ...previous, [order.id]: event.target.value }))}><option value="">Transfer to…</option>{data.tables.filter((target) => target.id !== table.id && !target.mergedInto && !data.tables.some((candidate) => candidate.mergedInto === target.id) && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!transferTargets[order.id]} onClick={() => { const target = transferTargets[order.id]; if (target) transferOrder(order.id, target); }}>Move</button></div>)}</div> : <p className="table-no-order">No open ticket</p>}
-        {table.mergedInto ? <div className="merged-table-control"><span>Joined with Table {data.tables.find((candidate) => candidate.id === table.mergedInto)?.name}</span><button onClick={() => unmergeTable(table.id)}>Unmerge tables</button></div> : <><div className="table-state-actions"><span>Set state</span>{(["available", "occupied", "reserved", "cleaning"] as const).map((status) => <button key={status} className={table.status === status ? "selected-state" : ""} onClick={() => setTableStatus(table.id, status)}>{status[0].toUpperCase() + status.slice(1)}</button>)}</div><div className="merge-control"><select aria-label={`Merge Table ${table.name} with`} value={mergeTargets[table.id] ?? ""} onChange={(event) => setMergeTargets((previous) => ({ ...previous, [table.id]: event.target.value }))}><option value="">Merge with another table…</option>{data.tables.filter((target) => target.id !== table.id && !target.mergedInto && !data.tables.some((candidate) => candidate.mergedInto === target.id) && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!mergeTargets[table.id]} onClick={() => { const secondary = mergeTargets[table.id]; if (secondary) { mergeTables(table.id, secondary); setMergeTargets((previous) => ({ ...previous, [table.id]: "" })); } }}>Merge tables</button></div></>}
+        {table.mergedInto ? <div className="merged-table-control"><span>Joined with Table {data.tables.find((candidate) => candidate.id === table.mergedInto)?.name}</span><button onClick={() => unmergeTable(table.id)}>Unmerge tables</button></div> : <><div className="table-state-actions"><span>Set state</span>{(["available", "occupied", "reserved", "cleaning"] as const).map((status) => <button key={status} className={table.status === status ? "selected-state" : ""} onClick={() => status === "reserved" ? requestReservation(table.id) : setTableStatus(table.id, status)}>{status === "reserved" ? table.status === "reserved" ? "Edit booking" : "Reserve" : status[0].toUpperCase() + status.slice(1)}</button>)}</div><div className="merge-control"><select aria-label={`Merge Table ${table.name} with`} value={mergeTargets[table.id] ?? ""} onChange={(event) => setMergeTargets((previous) => ({ ...previous, [table.id]: event.target.value }))}><option value="">Merge with another table…</option>{data.tables.filter((target) => target.id !== table.id && !target.mergedInto && !data.tables.some((candidate) => candidate.mergedInto === target.id) && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!mergeTargets[table.id]} onClick={() => { const secondary = mergeTargets[table.id]; if (secondary) { mergeTables(table.id, secondary); setMergeTargets((previous) => ({ ...previous, [table.id]: "" })); } }}>Merge tables</button></div></>}
       </article>;
     })}</div>
   </div>;
