@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type Table } from "@/lib/pos-data";
 
-const categories: Category[] = ["All", "Starters", "Mains", "Pizza", "Drinks", "Desserts"];
+const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
 const moneyRounded = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const itemById = (id: string) => menu.find((item) => item.id === id);
@@ -11,6 +11,8 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 30 }, { id: "no-garnish", label: "No garnish", price: 0 }],
   Mains: [{ id: "extra-protein", label: "Extra protein", price: 120 }, { id: "no-onion", label: "No onion", price: 0 }],
   Pizza: [{ id: "extra-cheese", label: "Extra mozzarella", price: 60 }, { id: "chili-oil", label: "Chili oil", price: 30 }],
+  Soups: [{ id: "soup-cream", label: "Add cream", price: 25 }, { id: "soup-croutons", label: "Extra croutons", price: 30 }],
+  "Breads & Sides": [{ id: "extra-butter", label: "Extra butter", price: 20 }, { id: "roasted-garlic", label: "Roasted garlic", price: 25 }],
   Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 30 }, { id: "less-ice", label: "Less ice", price: 0 }],
   Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 80 }, { id: "extra-cream", label: "Extra cream", price: 40 }],
 };
