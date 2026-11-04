@@ -20,7 +20,7 @@ export type OrderLine = { id?: string; menuItemId: string; quantity: number; not
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway"; status: OrderStatus; items: OrderLine[]; createdAt: string; cancellationReason?: string };
 export type PaymentMethod = "Cash" | "Card" | "UPI";
 export type PaymentTransaction = { id: string; orderId: string; amount: number; method: PaymentMethod; createdAt: string; splitLabel?: string };
-export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[] };
+export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[]; menuItems: MenuItem[] };
 
 export const menu: MenuItem[] = [
   { id: "burrata", name: "Burrata & tomatoes", category: "Starters", description: "Heirloom tomato, basil oil, sourdough", price: 480, emoji: "\u{1F345}", color: "peach", popular: true },
@@ -82,6 +82,7 @@ export const menu: MenuItem[] = [
 export const initialData: PosData = {
   unavailableMenuIds: [],
   transactions: [],
+  menuItems: menu,
   tables: [
     { id: "t1", name: "01", seats: 2, status: "occupied", guests: 2 }, { id: "t2", name: "02", seats: 2, status: "available" },
     { id: "t3", name: "03", seats: 4, status: "occupied", guests: 3 }, { id: "t4", name: "04", seats: 4, status: "available" },

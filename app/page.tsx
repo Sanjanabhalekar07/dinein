@@ -6,7 +6,7 @@ import { initialData, loadPosData, menu, savePosData, type Category, type MenuIt
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 const money = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(amount);
 const moneyRounded = (amount: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
-const itemById = (id: string) => menu.find((item) => item.id === id);
+const itemById = (id: string, items: MenuItem[] = menu) => items.find((item) => item.id === id);
 const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Starters: [{ id: "extra-sauce", label: "Extra sauce", price: 30 }, { id: "no-garnish", label: "No garnish", price: 0 }],
   Mains: [{ id: "extra-protein", label: "Extra protein", price: 120 }, { id: "no-onion", label: "No onion", price: 0 }],
@@ -16,7 +16,7 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 30 }, { id: "less-ice", label: "Less ice", price: 0 }],
   Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 80 }, { id: "extra-cream", label: "Extra cream", price: 40 }],
 };
-const lineUnitPrice = (line: OrderLine) => (itemById(line.menuItemId)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
+const lineUnitPrice = (line: OrderLine, items: MenuItem[] = menu) => (itemById(line.menuItemId, items)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
 const dateTimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const formatReservationTime = (date: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(new Date(date));
 
@@ -46,9 +46,17 @@ export default function Home() {
   const [reservationGuestName, setReservationGuestName] = useState("");
   const [reservationGuests, setReservationGuests] = useState(2);
   const [reservationTime, setReservationTime] = useState("");
+  const [menuEditorId, setMenuEditorId] = useState<string | null>(null);
+  const [menuFormName, setMenuFormName] = useState("");
+  const [menuFormDescription, setMenuFormDescription] = useState("");
+  const [menuFormCategory, setMenuFormCategory] = useState<MenuItem["category"]>("Starters");
+  const [menuFormPrice, setMenuFormPrice] = useState("");
+  const [menuFormEmoji, setMenuFormEmoji] = useState("\u{1F37D}");
+  const [menuFormAvailable, setMenuFormAvailable] = useState(true);
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false);
 
   useEffect(() => {
-    loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [] }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
+    loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [], menuItems: saved.menuItems ?? menu }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -71,8 +79,9 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const visibleMenu = useMemo(() => menu.filter((item) => (category === "All" || item.category === category) && `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())), [category, search]);
-  const subtotal = cart.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
+  const menuItems = data.menuItems ?? menu;
+  const visibleMenu = useMemo(() => menuItems.filter((item) => (category === "All" || item.category === category) && `${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase())), [category, search, menuItems]);
+  const subtotal = cart.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
   const activeOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
@@ -263,6 +272,38 @@ export default function Home() {
     });
   }
 
+  function openMenuEditor(item?: MenuItem) {
+    setMenuEditorId(item?.id ?? null);
+    setMenuFormName(item?.name ?? "");
+    setMenuFormDescription(item?.description ?? "");
+    setMenuFormCategory(item?.category ?? "Starters");
+    setMenuFormPrice(item ? String(item.price) : "");
+    setMenuFormEmoji(item?.emoji ?? "\u{1F37D}");
+    setMenuFormAvailable(item ? !(data.unavailableMenuIds ?? []).includes(item.id) : true);
+    setMenuEditorOpen(true);
+  }
+
+  function saveMenuItem() {
+    const name = menuFormName.trim();
+    const price = Number(menuFormPrice);
+    if (!name || !menuFormDescription.trim() || !Number.isFinite(price) || price <= 0 || !menuFormEmoji.trim()) {
+      setNotice("Enter a name, description, icon, and price greater than zero.");
+      return;
+    }
+    const existing = menuEditorId ? menuItems.find((item) => item.id === menuEditorId) : undefined;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `item-${Date.now()}`;
+    const id = existing?.id ?? (menuItems.some((item) => item.id === slug) ? `${slug}-${Date.now()}` : slug);
+    const colors = ["peach", "yellow", "green", "rose", "blue"];
+    const item: MenuItem = { id, name, description: menuFormDescription.trim(), category: menuFormCategory, price, emoji: menuFormEmoji.trim(), color: existing?.color ?? colors[menuItems.length % colors.length] };
+    setData((previous) => ({
+      ...previous,
+      menuItems: existing ? (previous.menuItems ?? menu).map((candidate) => candidate.id === id ? item : candidate) : [...(previous.menuItems ?? menu), item],
+      unavailableMenuIds: menuFormAvailable ? (previous.unavailableMenuIds ?? []).filter((itemId) => itemId !== id) : (previous.unavailableMenuIds ?? []).includes(id) ? previous.unavailableMenuIds : [...(previous.unavailableMenuIds ?? []), id],
+    }));
+    setMenuEditorOpen(false);
+    setNotice(existing ? `${name} updated.` : `${name} added to the menu.`);
+  }
+
   function addTable() {
     setData((previous) => {
       const nextNumber = previous.tables.reduce((largest, table) => Math.max(largest, Number(table.name) || 0), 0) + 1;
@@ -277,7 +318,7 @@ export default function Home() {
   }
 
   function lineTotal(lines: OrderLine[]) {
-    return lines.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
+    return lines.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
   }
 
   return (
@@ -354,7 +395,7 @@ export default function Home() {
                 </button>)}
                 {visibleMenu.length === 0 && <div className="empty-search">No menu items match “{search}”.</div>}
               </div>
-              <div className="menu-footer"><span>Showing <b>{visibleMenu.length}</b> of {menu.length} items</span><button onClick={() => { setCategory("All"); setSearch(""); }}>Manage menu ↗</button></div>
+              <div className="menu-footer"><span>Showing <b>{visibleMenu.length}</b> of {menuItems.length} items</span><button onClick={() => { setCategory("All"); setSearch(""); setView("Menu"); }}>Manage menu ↗</button></div>
             </section>
 
             <section className="panel ticket-panel">
@@ -363,8 +404,8 @@ export default function Home() {
               <div className="ticket-table-row"><span>Table</span><button onClick={() => setView("Floor plan")}>{selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Choose table"} <span>⌄</span></button></div>
               <div className="order-list-heading"><span>ORDER ITEMS</span><span>{cart.reduce((sum, line) => sum + line.quantity, 0)} items</span></div>
               <div className="cart-lines">
-                {cart.length === 0 && currentOrder && <div className="existing-order"><span className="existing-order-top">{currentOrder.id} <b>{currentOrder.status}</b></span>{currentOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div className="cart-line" key={line.id ?? line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line))} each</span><span className="quantity-controls"><button disabled aria-label="Decrease quantity">−</button><b>{line.quantity}</b><button disabled aria-label="Increase quantity">＋</button></span></div></div>; })}</div>}
-                {cart.map((line) => { const item = itemById(line.menuItemId); const lineKey = line.id ?? line.menuItemId; return <div className="cart-line" key={lineKey}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line))} each</span><span className="quantity-controls"><button onClick={() => changeQuantity(lineKey, -1)} aria-label={`Decrease ${item?.name}`}>−</button><b>{line.quantity}</b><button onClick={() => changeQuantity(lineKey, 1)} aria-label={`Increase ${item?.name}`}>＋</button></span></div></div>; })}
+                {cart.length === 0 && currentOrder && <div className="existing-order"><span className="existing-order-top">{currentOrder.id} <b>{currentOrder.status}</b></span>{currentOrder.items.map((line) => { const item = itemById(line.menuItemId, menuItems); return <div className="cart-line" key={line.id ?? line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line, menuItems))} each</span><span className="quantity-controls"><button disabled aria-label="Decrease quantity">−</button><b>{line.quantity}</b><button disabled aria-label="Increase quantity">＋</button></span></div></div>; })}</div>}
+                {cart.map((line) => { const item = itemById(line.menuItemId, menuItems); const lineKey = line.id ?? line.menuItemId; return <div className="cart-line" key={lineKey}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line, menuItems))} each</span><span className="quantity-controls"><button onClick={() => changeQuantity(lineKey, -1)} aria-label={`Decrease ${item?.name}`}>−</button><b>{line.quantity}</b><button onClick={() => changeQuantity(lineKey, 1)} aria-label={`Increase ${item?.name}`}>＋</button></span></div></div>; })}
                 {cart.length === 0 && !currentOrder && <div className="cart-empty"><span>＋</span><b>Your ticket is looking fresh</b><small>Add menu items to get started</small></div>}
               </div>
               <button className="add-note" onClick={() => setNotice("Add item-specific instructions by customizing a menu item.")}>＋ &nbsp; Add a note or special request</button>
@@ -376,11 +417,12 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length}</b></div><div><span>AVG TIME</span><b>{averageTicketTime ?? "—"} <small>{averageTicketTime === null ? "" : "min"}</small></b></div><div className="queue-art">♨</div></div></section></div>
-          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
+          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
       {notice && <div role="status" className="toast"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss notification">×</button></div>}
+      {menuEditorOpen && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuEditorOpen(false); }}><section className="payment-dialog menu-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="menu-editor-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">MENU MANAGER</span><h2 id="menu-editor-title">{menuEditorId ? "Edit menu item" : "Add a menu item"}</h2><p>Changes are saved to this device and appear in ordering.</p></div><button className="payment-close" aria-label="Close menu editor" onClick={() => setMenuEditorOpen(false)}>×</button></div><label className="menu-editor-field"><span>Item name</span><input maxLength={60} value={menuFormName} onChange={(event) => setMenuFormName(event.target.value)} placeholder="e.g. House special biryani"/></label><label className="menu-editor-field"><span>Description</span><textarea maxLength={120} value={menuFormDescription} onChange={(event) => setMenuFormDescription(event.target.value)} placeholder="Ingredients or a short description"/></label><div className="menu-editor-row"><label className="menu-editor-field"><span>Category</span><select value={menuFormCategory} onChange={(event) => setMenuFormCategory(event.target.value as MenuItem["category"])}>{categories.filter((entry) => entry !== "All").map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label><label className="menu-editor-field"><span>Price (₹)</span><input type="number" min="1" step="1" value={menuFormPrice} onChange={(event) => setMenuFormPrice(event.target.value)} placeholder="350"/></label><label className="menu-editor-field icon-field"><span>Food icon</span><input maxLength={8} value={menuFormEmoji} onChange={(event) => setMenuFormEmoji(event.target.value)} aria-label="Food icon emoji"/></label></div><label className="menu-availability-check"><input type="checkbox" checked={menuFormAvailable} onChange={(event) => setMenuFormAvailable(event.target.checked)}/><span>Available to order</span></label><div className="menu-editor-actions"><button onClick={() => setMenuEditorOpen(false)}>Cancel</button><button className="send-button" onClick={saveMenuItem}>{menuEditorId ? "Save changes" : "Add to menu"}</button></div></section></div>}
       {reservationTable && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationTableId(null); }}><section className="payment-dialog reservation-dialog" role="dialog" aria-modal="true" aria-labelledby="reservation-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">TABLE {reservationTable.name} · RESERVATION</span><h2 id="reservation-title">{reservationTable.reservation ? "Edit reservation" : "Book this table"}</h2><p>Save the guest details and expected arrival time.</p></div><button className="payment-close" aria-label="Close reservation form" onClick={() => setReservationTableId(null)}>×</button></div><label className="reservation-field"><span>Guest name</span><input autoFocus required maxLength={60} value={reservationGuestName} onChange={(event) => setReservationGuestName(event.target.value)} placeholder="Name for the booking"/></label><div className="reservation-fields-row"><label className="reservation-field"><span>Party size</span><input type="number" min={1} max={reservationTable.seats + data.tables.filter((table) => table.mergedInto === reservationTable.id).reduce((sum, table) => sum + table.seats, 0)} value={reservationGuests} onChange={(event) => setReservationGuests(Number(event.target.value))}/></label><label className="reservation-field"><span>Arrival time</span><input type="datetime-local" required value={reservationTime} onChange={(event) => setReservationTime(event.target.value)}/></label></div><div className="reservation-form-actions">{reservationTable.reservation && <button className="remove-reservation" onClick={() => { setTableStatus(reservationTable.id, "available"); setReservationTableId(null); setNotice("Reservation cancelled."); }}>Cancel reservation</button>}<button className="send-button reservation-save" onClick={saveReservation}><span>Save reservation</span><b>Table {reservationTable.name} <i>→</i></b></button></div></section></div>}
       {customizingItem && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCustomizingItem(null); }}><section className="payment-dialog item-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-item-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CUSTOMIZE ITEM</span><h2 id="custom-item-title">{customizingItem.name}</h2><p>{customizingItem.description}</p></div><button className="payment-close" aria-label="Close item options" onClick={() => setCustomizingItem(null)}>×</button></div>
         <div className="modifier-section"><div className="modifier-heading"><b>Add-ons &amp; preferences</b><small>Optional · choose any that apply</small></div>{modifiersByCategory[customizingItem.category].map((modifier) => <label className="modifier-option" key={modifier.id}><input type="checkbox" checked={customModifierIds.includes(modifier.id)} onChange={(event) => setCustomModifierIds((previous) => event.target.checked ? [...previous, modifier.id] : previous.filter((id) => id !== modifier.id))} /><span>{modifier.label}</span><b>{modifier.price > 0 ? `+${money(modifier.price)}` : "No charge"}</b></label>)}</div>
@@ -389,7 +431,7 @@ export default function Home() {
       </section></div>}
       {orderPendingCancellation && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCancelOrderId(null); }}><section className="payment-dialog cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CANCEL TICKET · {orderPendingCancellation.id}</span><h2 id="cancel-title">Cancel this order?</h2><p>This removes the ticket from the kitchen queue. The reason will be kept in order history.</p></div><button className="payment-close" aria-label="Close cancellation" onClick={() => setCancelOrderId(null)}>×</button></div><label className="discount-row cancel-reason"><span>Reason</span><select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}><option>Guest changed their mind</option><option>Duplicate order</option><option>Item unavailable</option><option>Long wait time</option><option>Entered by mistake</option></select></label><div className="cancel-dialog-actions"><button onClick={() => setCancelOrderId(null)}>Keep order</button><button onClick={() => cancelOrder(orderPendingCancellation.id, cancelReason)}>Cancel ticket</button></div></section></div>}
       {checkoutOrder && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOrderId(null); }}><section className="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">PAYMENT · {checkoutOrder.id}</span><h2 id="payment-title">Complete checkout</h2><p>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : "Takeaway order"} · {checkoutOrder.items.reduce((sum, line) => sum + line.quantity, 0)} items</p></div><button className="payment-close" aria-label="Close checkout" onClick={() => setCheckoutOrderId(null)}>×</button></div>
-        <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small className="payment-line-details">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line) * line.quantity)}</b></div>; })}</div>
+        <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId, menuItems); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small className="payment-line-details">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>; })}</div>
         <label className="discount-row"><span>Discount</span><select value={discountPercent} onChange={(event) => setDiscountPercent(Number(event.target.value))}><option value={0}>No discount</option><option value={5}>5% off</option><option value={10}>10% off</option><option value={15}>15% off</option></select></label>
         <div className="payment-totals"><div><span>Subtotal</span><b>{money(checkoutSubtotal)}</b></div>{discountPercent > 0 && <div><span>Discount ({discountPercent}%)</span><b className="discount-value">−{money(checkoutDiscount)}</b></div>}<div><span>Tax <small>(8% after discount)</small></span><b>{money(checkoutTax)}</b></div><div className="payment-total"><span>Amount due</span><b>{money(checkoutTotal)}</b></div></div>
         {!splitPayment && <><div className="payment-method-heading"><b>Payment method</b><span>SIMULATED PAYMENT</span></div><div className="payment-methods">{(["UPI", "Card", "Cash"] as const).map((method) => <button key={method} className={paymentMethod === method ? "method-selected" : ""} aria-pressed={paymentMethod === method} onClick={() => setPaymentMethod(method)}><span>{method === "UPI" ? "⌁" : method === "Card" ? "▣" : "₹"}</span>{method}</button>)}</div></>}
@@ -404,25 +446,27 @@ export default function Home() {
 type WorkflowProps = {
   view: string;
   data: PosData;
+  menuItems: MenuItem[];
   clockNow: number | null;
   setView: (view: string) => void;
   setTableStatus: (tableId: string, status: Table["status"]) => void;
   requestReservation: (tableId: string) => void;
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
   requestCancellation: (orderId: string) => void;
+  openMenuEditor: (item?: MenuItem) => void;
   transferOrder: (orderId: string, tableId: string) => void;
   mergeTables: (primaryId: string, secondaryId: string) => void;
   unmergeTable: (secondaryId: string) => void;
   toggleMenuAvailability: (menuItemId: string) => void;
 };
 
-function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
-  const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line) * line.quantity, 0);
+  const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
   const minutesAgo = (date: string) => clockNow === null ? "—" : (() => { const minutes = Math.max(0, Math.floor((clockNow - new Date(date).getTime()) / 60000)); return minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`; })();
   const rangeEnd = clockNow === null ? null : new Date(clockNow);
   const rangeStart = rangeEnd ? new Date(rangeEnd) : null;
@@ -441,7 +485,7 @@ function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, requestR
   if (view === "Kitchen") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Live kitchen queue</h2><p>Move each ticket through prep as the team works.</p></div><span className="live-pill"><i /> LIVE</span></div>
     <div className="kitchen-board">{openOrders.length === 0 && <div className="workflow-empty">No open tickets. New orders will appear here.</div>}
-      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span><span className="ticket-actions">{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}{(order.status === "new" || order.status === "preparing") && <button className="cancel-ticket" onClick={() => requestCancellation(order.id)}>Cancel</button>}</span></div></article>)}
+      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId, menuItems)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span><span className="ticket-actions">{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}{(order.status === "new" || order.status === "preparing") && <button className="cancel-ticket" onClick={() => requestCancellation(order.id)}>Cancel</button>}</span></div></article>)}
     </div>
   </div>;
 
@@ -459,8 +503,8 @@ function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, requestR
   </div>;
 
   if (view === "Menu") return <div className="workflow-view">
-    <div className="workflow-head"><div><h2>Menu availability</h2><p>Toggle an item off the ordering screen when it sells out.</p></div><span className="menu-count">{menu.length} items · {menu.filter((item) => !(data.unavailableMenuIds ?? []).includes(item.id)).length} available</span></div>
-    <div className="availability-grid">{menu.map((item) => { const unavailable = (data.unavailableMenuIds ?? []).includes(item.id); return <article className={`workflow-card availability-card ${unavailable ? "is-unavailable" : ""}`} key={item.id}><span className={`food-art ${item.color}`}><span>{item.emoji}</span></span><div className="availability-copy"><span className="ticket-kicker">{item.category.toUpperCase()}</span><h3>{item.name}</h3><p>{item.description}</p><b>{money(item.price)}</b></div><button className={`availability-toggle ${unavailable ? "off" : ""}`} aria-pressed={!unavailable} onClick={() => toggleMenuAvailability(item.id)}>{unavailable ? "Unavailable" : "Available"}<i /></button></article>; })}</div>
+    <div className="workflow-head"><div><h2>Menu management</h2><p>Add dishes, update details, and toggle sold-out items.</p></div><div className="menu-admin-actions"><span className="menu-count">{menuItems.length} items · {menuItems.filter((item) => !(data.unavailableMenuIds ?? []).includes(item.id)).length} available</span><button className="primary-button" onClick={() => openMenuEditor()}>＋ Add menu item</button></div></div>
+    <div className="availability-grid">{menuItems.map((item) => { const unavailable = (data.unavailableMenuIds ?? []).includes(item.id); return <article className={`workflow-card availability-card ${unavailable ? "is-unavailable" : ""}`} key={item.id}><span className={`food-art ${item.color}`}><span>{item.emoji}</span></span><div className="availability-copy"><span className="ticket-kicker">{item.category.toUpperCase()}</span><h3>{item.name}</h3><p>{item.description}</p><b>{money(item.price)}</b></div><div className="availability-actions"><button className="menu-edit-button" onClick={() => openMenuEditor(item)}>Edit</button><button className={`availability-toggle ${unavailable ? "off" : ""}`} aria-pressed={!unavailable} onClick={() => toggleMenuAvailability(item.id)}>{unavailable ? "Unavailable" : "Available"}<i /></button></div></article>; })}</div>
   </div>;
 
   return <div className="workflow-view">

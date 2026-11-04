@@ -26,6 +26,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs.
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
+- Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, and availability.
 - Service report view with live order counts and a clearly labeled sample sales pulse.
 - Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
 
