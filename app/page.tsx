@@ -66,7 +66,8 @@ export default function Home() {
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
   const activeOrders = data.orders.filter((order) => order.status !== "paid");
-  const occupied = data.tables.filter((table) => table.status === "occupied").length;
+  const serviceTables = data.tables.filter((table) => table.status !== "merged");
+  const occupied = serviceTables.filter((table) => table.status === "occupied").length;
   const now = clockNow === null ? null : new Date(clockNow);
   const todayTransactions = now ? (data.transactions ?? []).filter((transaction) => new Date(transaction.createdAt).toDateString() === now.toDateString()) : [];
   const paidToday = new Set(todayTransactions.map((transaction) => transaction.orderId));
@@ -169,6 +170,39 @@ export default function Home() {
     setNotice(`${orderId} transferred to table ${data.tables.find((table) => table.id === targetId)?.name}`);
   }
 
+  function mergeTables(primaryId: string, secondaryId: string) {
+    if (primaryId === secondaryId) return;
+    const primary = data.tables.find((table) => table.id === primaryId);
+    const secondary = data.tables.find((table) => table.id === secondaryId);
+    if (!primary || !secondary || primary.mergedInto || secondary.mergedInto || primary.status === "merged" || secondary.status === "merged" || primary.status === "reserved" || primary.status === "cleaning" || secondary.status === "reserved" || secondary.status === "cleaning" || data.tables.some((table) => table.mergedInto === primaryId || table.mergedInto === secondaryId)) {
+      setNotice("Choose two available or occupied tables. Each table can join one pair.");
+      return;
+    }
+    setData((previous) => ({
+      ...previous,
+      orders: previous.orders.map((order) => order.tableId === secondaryId && order.status !== "paid" ? { ...order, tableId: primaryId } : order),
+      tables: previous.tables.map((table) => table.id === primaryId ? { ...table, status: table.status === "occupied" || secondary.status === "occupied" ? "occupied" : "available", guests: (table.guests ?? 0) + (secondary.guests ?? 0) || undefined, mergedBaseStatus: table.status === "merged" ? "available" : table.status, mergedBaseGuests: table.guests } : table.id === secondaryId ? { ...table, status: "merged", mergedInto: primaryId, mergedOrderIds: data.orders.filter((order) => order.tableId === secondaryId && order.status !== "paid").map((order) => order.id), mergedOriginalStatus: table.status === "merged" ? "available" : table.status, mergedOriginalGuests: table.guests, guests: undefined } : table),
+    }));
+    setNotice(`Tables ${primary.name} and ${secondary.name} merged.`);
+  }
+
+  function unmergeTable(secondaryId: string) {
+    const secondary = data.tables.find((table) => table.id === secondaryId);
+    if (!secondary?.mergedInto) return;
+    const primaryId = secondary.mergedInto;
+    const mergedOrderIds = secondary.mergedOrderIds ?? [];
+    const secondaryOrders = data.orders.filter((order) => mergedOrderIds.includes(order.id));
+    const hasOpenSecondaryOrders = secondaryOrders.some((order) => order.status !== "paid");
+    const hasPaidSecondaryOrders = secondaryOrders.some((order) => order.status === "paid");
+    const hasRemainingPrimaryOrders = data.orders.some((order) => order.tableId === primaryId && !mergedOrderIds.includes(order.id) && order.status !== "paid");
+    setData((previous) => ({
+      ...previous,
+      orders: previous.orders.map((order) => mergedOrderIds.includes(order.id) ? { ...order, tableId: secondaryId } : order),
+      tables: previous.tables.map((table) => table.id === secondaryId ? { ...table, status: hasOpenSecondaryOrders ? "occupied" : hasPaidSecondaryOrders ? "cleaning" : secondary.mergedOriginalStatus ?? "available", guests: hasOpenSecondaryOrders ? secondary.mergedOriginalGuests ?? secondary.seats : hasPaidSecondaryOrders ? undefined : secondary.mergedOriginalGuests, mergedInto: undefined, mergedOrderIds: undefined, mergedOriginalStatus: undefined, mergedOriginalGuests: undefined } : table.id === primaryId ? { ...table, guests: hasRemainingPrimaryOrders ? table.mergedBaseGuests ?? table.seats : table.mergedBaseGuests, status: hasRemainingPrimaryOrders ? "occupied" : table.mergedBaseStatus ?? "available", mergedBaseGuests: undefined, mergedBaseStatus: undefined } : table),
+    }));
+    setNotice(`Table ${secondary.name} unmerged from table ${data.tables.find((table) => table.id === primaryId)?.name}.`);
+  }
+
   function toggleMenuAvailability(menuItemId: string) {
     setData((previous) => {
       const unavailableMenuIds = previous.unavailableMenuIds ?? [];
@@ -227,7 +261,7 @@ export default function Home() {
           <div className="metric-grid">
             <article className="metric-card"><div className="metric-top"><span>Today sales</span><span className="metric-icon sales-icon">₹</span></div><div className="metric-value metric-currency">{moneyRounded(todaySales)}</div><div className="metric-foot">{todayTransactions.length} payments recorded today</div></article>
             <article className="metric-card"><div className="metric-top"><span>Open orders</span><span className="metric-icon order-icon">☷</span></div><div className="metric-value">{activeOrders.length}<span className="metric-unit">orders</span></div><div className="metric-foot"><b className="green-text">{activeOrders.filter((order) => order.status === "preparing").length} preparing</b><span className="foot-sep">·</span>{activeOrders.filter((order) => order.status === "ready").length} ready</div></article>
-            <article className="metric-card"><div className="metric-top"><span>Tables occupied</span><span className="metric-icon table-icon">⌑</span></div><div className="metric-value">{occupied}<span className="metric-unit">/ {data.tables.length} tables</span></div><div className="metric-foot">{data.tables.length - occupied} available · {Math.round((occupied / Math.max(1, data.tables.length)) * 100)}% capacity</div><div className="metric-progress occupancy"><i style={{ width: `${Math.min(100, (occupied / Math.max(1, data.tables.length)) * 100)}%` }} /></div></article>
+            <article className="metric-card"><div className="metric-top"><span>Tables occupied</span><span className="metric-icon table-icon">⌑</span></div><div className="metric-value">{occupied}<span className="metric-unit">/ {serviceTables.length} tables</span></div><div className="metric-foot">{serviceTables.length - occupied} available · {Math.round((occupied / Math.max(1, serviceTables.length)) * 100)}% capacity</div><div className="metric-progress occupancy"><i style={{ width: `${Math.min(100, (occupied / Math.max(1, serviceTables.length)) * 100)}%` }} /></div></article>
             <article className="metric-card"><div className="metric-top"><span>Avg. ticket time</span><span className="metric-icon time-icon">◷</span></div><div className="metric-value">{averageTicketTime ?? "—"}{averageTicketTime !== null && <span className="metric-unit">min</span>}</div><div className="metric-foot">{completedDurations.length} completed tickets today</div></article>
           </div>
 
@@ -236,15 +270,18 @@ export default function Home() {
           <div className="work-grid">
             <section className="panel floor-panel">
               <div className="panel-header"><div><h3>Dining room</h3><p>Ground floor <span>·</span> {data.tables.length} tables</p></div><button className="more-button" aria-label="Dining room options">···</button></div>
-              <div className="table-legend"><span><i className="legend-dot available" />Available</span><span><i className="legend-dot occupied" />Occupied</span><span><i className="legend-dot reserved" />Reserved</span><span><i className="legend-dot cleaning" />Cleaning</span></div>
+              <div className="table-legend"><span><i className="legend-dot available" />Available</span><span><i className="legend-dot occupied" />Occupied</span><span><i className="legend-dot reserved" />Reserved</span><span><i className="legend-dot cleaning" />Cleaning</span><span><i className="legend-dot merged-dot" />Joined</span></div>
               <div className="floor-plan" aria-label="Dining room table selector">
                 <div className="floor-wall wall-top" /><div className="window-line">WINDOWS</div><div className="floor-wall wall-right" /><div className="floor-wall wall-left" />
                 <div className="table-map">
                   {data.tables.map((table, index) => {
                     const orderLines = tableOrderLines(table);
                     const totalAmount = lineTotal(orderLines);
-                    return <button key={table.id} onClick={() => { setSelectedTable(table.id); setCart([]); setView("New order"); }} className={`table-node ${table.status} ${selectedTable === table.id ? "selected" : ""} table-${index + 1}`} aria-label={`Table ${table.name}, ${table.status}${selectedTable === table.id ? ", selected" : ""}`}>
-                      <span className="table-top"><b>{table.name}</b><small>· {table.seats} seats</small></span><span className="table-state">{table.status === "available" ? "Available" : table.status === "occupied" ? `${table.guests ?? table.seats} guests` : table.status}</span>{table.status === "occupied" && <span className="table-total">{money(totalAmount)}</span>}
+                    const primaryTable = table.mergedInto ? data.tables.find((candidate) => candidate.id === table.mergedInto) : undefined;
+                    const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
+                    const selectionId = table.mergedInto ?? table.id;
+                    return <button key={table.id} onClick={() => { setSelectedTable(selectionId); setCart([]); setView("New order"); }} className={`table-node ${table.status} ${selectedTable === selectionId ? "selected" : ""} table-${index + 1}`} aria-label={`Table ${table.name}, ${table.status}${table.mergedInto ? ` joined with ${primaryTable?.name}` : ""}`}>
+                      <span className="table-top"><b>{table.name}</b><small>· {table.mergedInto ? table.seats : joinedSeats} seats</small></span><span className="table-state">{table.mergedInto ? `Joined · ${primaryTable?.name ?? "—"}` : table.status === "available" ? "Available" : table.status === "occupied" ? `${table.guests ?? joinedSeats} guests` : table.status}</span>{table.status === "occupied" && <span className="table-total">{money(totalAmount)}</span>}
                     </button>;
                   })}
                 </div>
@@ -286,7 +323,7 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div><button onClick={() => setView("Reports")}>View all ↗</button></div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index}`}>{order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Kitchen queue <span className="live-pill"><i /> LIVE</span></h3><p>Keep every plate moving.</p></div><button onClick={() => setView("Kitchen")}>Open display ↗</button></div><div className="queue-summary"><div><span>IN PREP</span><b>{activeOrders.filter((order) => order.status === "preparing" || order.status === "new").length}</b></div><div><span>READY</span><b className="queue-ready">{activeOrders.filter((order) => order.status === "ready").length}</b></div><div><span>AVG TIME</span><b>{averageTicketTime ?? "—"} <small>{averageTicketTime === null ? "" : "min"}</small></b></div><div className="queue-art">♨</div></div></section></div>
-          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} transferOrder={transferOrder} toggleMenuAvailability={toggleMenuAvailability} />}
+          </> : <WorkflowPanel view={view} data={data} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} setOrderStatus={setOrderStatus} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
@@ -317,11 +354,14 @@ type WorkflowProps = {
   setTableStatus: (tableId: string, status: Table["status"]) => void;
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
   transferOrder: (orderId: string, tableId: string) => void;
+  mergeTables: (primaryId: string, secondaryId: string) => void;
+  unmergeTable: (secondaryId: string) => void;
   toggleMenuAvailability: (menuItemId: string) => void;
 };
 
-function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, transferOrder, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrderStatus, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
+  const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid");
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
@@ -352,9 +392,10 @@ function WorkflowPanel({ view, data, clockNow, setView, setTableStatus, setOrder
     <div className="workflow-head"><div><h2>Table management</h2><p>Choose a table to update its state or move an open ticket.</p></div><button className="primary-button" onClick={() => setView("New order")}>＋ Start an order</button></div>
     <div className="floor-manager-grid">{data.tables.map((table) => {
       const orders = openOrders.filter((order) => order.tableId === table.id);
-      return <article className="workflow-card table-manager-card" key={table.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{table.seats} SEATS</span><h3>Table {table.name}</h3></div><span className={`status-pill table-status-${table.status}`}>{table.status}</span></div>
-        {orders.length ? <div className="table-open-orders">{orders.map((order) => <div key={order.id} className="transfer-row"><span><b>{order.id}</b><small>{order.items.reduce((sum, item) => sum + item.quantity, 0)} items · {money(orderAmount(order))}</small></span><select aria-label={`Transfer order ${order.id}`} value={transferTargets[order.id] ?? ""} onChange={(event) => setTransferTargets((previous) => ({ ...previous, [order.id]: event.target.value }))}><option value="">Transfer to…</option>{data.tables.filter((target) => target.id !== table.id && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!transferTargets[order.id]} onClick={() => { const target = transferTargets[order.id]; if (target) transferOrder(order.id, target); }}>Move</button></div>)}</div> : <p className="table-no-order">No open ticket</p>}
-        <div className="table-state-actions"><span>Set state</span>{(["available", "occupied", "reserved", "cleaning"] as const).map((status) => <button key={status} className={table.status === status ? "selected-state" : ""} onClick={() => setTableStatus(table.id, status)}>{status[0].toUpperCase() + status.slice(1)}</button>)}</div>
+      const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
+      return <article className="workflow-card table-manager-card" key={table.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{joinedSeats} SEATS</span><h3>Table {table.name}</h3></div><span className={`status-pill table-status-${table.status}`}>{table.status === "merged" ? "Joined" : table.status}</span></div>
+        {orders.length ? <div className="table-open-orders">{orders.map((order) => <div key={order.id} className="transfer-row"><span><b>{order.id}</b><small>{order.items.reduce((sum, item) => sum + item.quantity, 0)} items · {money(orderAmount(order))}</small></span><select aria-label={`Transfer order ${order.id}`} value={transferTargets[order.id] ?? ""} onChange={(event) => setTransferTargets((previous) => ({ ...previous, [order.id]: event.target.value }))}><option value="">Transfer to…</option>{data.tables.filter((target) => target.id !== table.id && !target.mergedInto && !data.tables.some((candidate) => candidate.mergedInto === target.id) && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!transferTargets[order.id]} onClick={() => { const target = transferTargets[order.id]; if (target) transferOrder(order.id, target); }}>Move</button></div>)}</div> : <p className="table-no-order">No open ticket</p>}
+        {table.mergedInto ? <div className="merged-table-control"><span>Joined with Table {data.tables.find((candidate) => candidate.id === table.mergedInto)?.name}</span><button onClick={() => unmergeTable(table.id)}>Unmerge tables</button></div> : <><div className="table-state-actions"><span>Set state</span>{(["available", "occupied", "reserved", "cleaning"] as const).map((status) => <button key={status} className={table.status === status ? "selected-state" : ""} onClick={() => setTableStatus(table.id, status)}>{status[0].toUpperCase() + status.slice(1)}</button>)}</div><div className="merge-control"><select aria-label={`Merge Table ${table.name} with`} value={mergeTargets[table.id] ?? ""} onChange={(event) => setMergeTargets((previous) => ({ ...previous, [table.id]: event.target.value }))}><option value="">Merge with another table…</option>{data.tables.filter((target) => target.id !== table.id && !target.mergedInto && !data.tables.some((candidate) => candidate.mergedInto === target.id) && target.status !== "reserved" && target.status !== "cleaning").map((target) => <option key={target.id} value={target.id}>Table {target.name}</option>)}</select><button disabled={!mergeTargets[table.id]} onClick={() => { const secondary = mergeTargets[table.id]; if (secondary) { mergeTables(table.id, secondary); setMergeTargets((previous) => ({ ...previous, [table.id]: "" })); } }}>Merge tables</button></div></>}
       </article>;
     })}</div>
   </div>;

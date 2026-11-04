@@ -1,4 +1,4 @@
-export type TableStatus = "available" | "occupied" | "reserved" | "cleaning";
+export type TableStatus = "available" | "occupied" | "reserved" | "cleaning" | "merged";
 export type OrderStatus = "new" | "preparing" | "ready" | "served" | "paid";
 export type Category = "All" | "Starters" | "Mains" | "Pizza" | "Drinks" | "Desserts";
 
@@ -13,7 +13,7 @@ export type MenuItem = {
   popular?: boolean;
 };
 
-export type Table = { id: string; name: string; seats: number; status: TableStatus; guests?: number };
+export type Table = { id: string; name: string; seats: number; status: TableStatus; guests?: number; mergedInto?: string; mergedOrderIds?: string[]; mergedOriginalStatus?: Exclude<TableStatus, "merged">; mergedOriginalGuests?: number; mergedBaseStatus?: Exclude<TableStatus, "merged">; mergedBaseGuests?: number };
 export type MenuModifier = { id: string; label: string; price: number };
 export type OrderLine = { id?: string; menuItemId: string; quantity: number; note?: string; modifiers?: MenuModifier[] };
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway"; status: OrderStatus; items: OrderLine[]; createdAt: string };
