@@ -13,9 +13,15 @@ export function reportPeriodBounds(period: ReportPeriod, now: Date) {
 
 export function customReportPeriodBounds(startDate: string, endDate: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return null;
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T23:59:59.999`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || startDate > endDate) return null;
+  const parseDate = (value: string, endOfDay = false) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    if (endOfDay) date.setHours(23, 59, 59, 999);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+  };
+  const start = parseDate(startDate);
+  const end = parseDate(endDate, true);
+  if (!start || !end || startDate > endDate || end.getTime() - start.getTime() >= 366 * 86400000) return null;
   return { start, end };
 }
 

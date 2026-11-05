@@ -35,6 +35,19 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
   await page.getByRole("button", { name: "Reports" }).click();
   await expect(page.getByText("Transaction history")).toBeVisible();
   await expect(page.getByText("#1054", { exact: true })).toBeVisible();
+  await page.getByLabel("Report period").selectOption("Custom");
+  const { localToday, localYesterday } = await page.evaluate(() => {
+    const toDateValue = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return { localToday: toDateValue(new Date()), localYesterday: toDateValue(yesterday) };
+  });
+  await page.getByLabel("Report start date").fill(localToday);
+  await page.getByLabel("Report end date").fill(localToday);
+  await expect(page.getByText("#1054", { exact: true })).toBeVisible();
+  await page.getByLabel("Report start date").fill(localYesterday);
+  await page.getByLabel("Report end date").fill(localYesterday);
+  await expect(page.getByText("#1054", { exact: true })).toHaveCount(0);
 });
 
 test("staff can split an open table ticket and select the new bill", async ({ page }) => {
@@ -239,6 +252,11 @@ test("service report period selector updates its chart and closeout labels", asy
   await range.selectOption("This month");
   await expect(page.locator(".report-chart-head")).toContainText("This month");
   await expect(page.locator(".shift-summary-head")).toContainText("this month");
+  await range.selectOption("Custom");
+  await page.getByLabel("Report start date").fill("2026-11-06");
+  await page.getByLabel("Report end date").fill("2026-11-05");
+  await expect(page.locator(".report-range-error")).toContainText("valid date range");
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeDisabled();
 });
 
 test("POS workspace remains usable at tablet touch widths", async ({ page }) => {
