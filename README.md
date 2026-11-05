@@ -16,7 +16,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Restaurant service dashboard with sample sales, order, table, and ticket-time metrics.
 - Visual dining-room table selector with Available, Occupied, Reserved, and Cleaning states. Managers can rearrange tables by dragging or using arrow keys; positions persist locally.
 - Searchable, category-filtered menu of 54 sample dishes across starters, soups, mains, breads and sides, pizza, drinks, and desserts, each with an icon and INR price. Menu photography is not bundled yet.
-- Dine-in, takeaway, and delivery tickets with quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
+- Dine-in, takeaway, and delivery tickets with quantity controls (1–99), subtotal/tax/total calculation, and send-to-kitchen action. Open tickets can accept additional kitchen rounds while keeping one consolidated bill.
 - Delivery recipient, phone, and address capture with validation, persistence, kitchen visibility, and checkout access for open takeaway or delivery tickets.
 - Item customization with named size or price variants, category-specific add-ons, per-item quantities, and kitchen instructions.
 - Simulated checkout that records a paid status, moves the table to Cleaning, and offers a printable guest bill.
