@@ -104,3 +104,80 @@ test("kitchen role receives only kitchen workspace navigation", async ({ page })
   await expect(navigation.getByRole("button", { name: /Reports/ })).toHaveCount(0);
   await expect(navigation.getByRole("button", { name: /New order/ })).toHaveCount(0);
 });
+
+test("delivery checkout validates recipient details and sends them to the kitchen", async ({ page }) => {
+  await page.getByRole("button", { name: "Delivery", exact: true }).click();
+  await page.getByRole("button", { name: /Burrata & tomatoes/ }).click();
+  await page.getByRole("button", { name: /Add to ticket/ }).click();
+  await page.getByRole("button", { name: /Send to kitchen/ }).click();
+  await expect(page.getByRole("status")).toContainText("Enter the delivery recipient's name");
+
+  await page.getByLabel("Recipient name").fill("Mira Shah");
+  await page.getByLabel("Phone").fill("9876543210");
+  await page.getByLabel("Delivery address").fill("18 Lake Road, Pune");
+  await page.getByRole("button", { name: /Send to kitchen/ }).click();
+  await expect(page.getByRole("status")).toContainText("sent to the kitchen");
+
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Kitchen display/ }).click();
+  const deliveryTicket = page.getByRole("article").filter({ has: page.getByText("Mira Shah") });
+  await expect(deliveryTicket).toContainText("18 Lake Road, Pune");
+  await expect(deliveryTicket).toContainText("9876543210");
+});
+
+test("inventory decreases when a stocked dish is sent and increases after restocking", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Menu/ }).click();
+  await page.getByRole("button", { name: /Add menu item/ }).click();
+  await page.getByLabel("Item name").fill("Limited batch tart");
+  await page.getByLabel("Description").fill("Tracked inventory workflow sample");
+  await page.getByLabel("Base price (₹)").fill("190");
+  await page.getByLabel("Stock on hand (blank for untracked)").fill("2");
+  await page.getByLabel("Low-stock alert at").fill("1");
+  await page.getByRole("button", { name: "Add to menu" }).click();
+
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  await page.getByRole("textbox", { name: "Search menu" }).fill("Limited batch tart");
+  await page.getByRole("button", { name: /Limited batch tart/ }).click();
+  await page.getByRole("button", { name: /Add to ticket/ }).click();
+  await page.getByRole("button", { name: /Send to kitchen/ }).click();
+
+  await navigation.getByRole("button", { name: /Menu/ }).click();
+  const itemCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Limited batch tart" }) });
+  await expect(itemCard.locator(".stock-badge")).toHaveText(/1 left/);
+  await itemCard.getByLabel("Received quantity for Limited batch tart").fill("3");
+  await itemCard.getByRole("button", { name: "Add stock" }).click();
+  await expect(itemCard.locator(".stock-badge")).toHaveText("4 in stock");
+});
+
+test("open orders can transfer between tables and table pairs can be merged and unmerged", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  const sourceTable = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Table 01" }) });
+  await sourceTable.getByLabel("Transfer order #1048").selectOption({ label: "Table 02" });
+  await sourceTable.getByRole("button", { name: "Move" }).click();
+  await expect(page.getByRole("status")).toContainText("transferred to table 02");
+
+  const destinationTable = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Table 02" }) });
+  await expect(destinationTable).toContainText("#1048");
+  await destinationTable.getByLabel("Merge Table 02 with").selectOption({ label: "Table 04" });
+  await destinationTable.getByRole("button", { name: "Merge tables" }).click();
+  await expect(page.getByRole("status")).toContainText("Tables 02 and 04 merged");
+
+  const joinedTable = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Table 04" }) });
+  await expect(joinedTable.locator(".status-pill")).toHaveText("Joined");
+  await joinedTable.getByRole("button", { name: "Unmerge tables" }).click();
+  await expect(page.getByRole("status")).toContainText("Table 04 unmerged from table 02");
+});
+
+test("POS workspace fits a narrow touchscreen viewport without page overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+  await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
+});
