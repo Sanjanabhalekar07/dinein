@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsc --target ES2022 --module commonjs --moduleResolution node --strict --skipLibCheck --rootDir . --outDir .test-build lib/pos-data.ts lib/pos-domain.ts && node --test tests/pos-domain.test.cjs"
+    "test": "tsc --target ES2022 --module commonjs --moduleResolution node --strict --skipLibCheck --rootDir . --outDir .test-build lib/pos-data.ts lib/pos-domain.ts && node --test tests/pos-domain.test.mjs"
   },
   "dependencies": {
     "next": "16.4.5",

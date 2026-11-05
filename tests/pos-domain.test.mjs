@@ -1,6 +1,6 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const { allocateCents, calculateBill, lineTotal, lineUnitPrice, splitOrderLines } = require("../.test-build/lib/pos-domain.js");
+import test from "node:test";
+import assert from "node:assert/strict";
+import { allocateCents, calculateBill, lineTotal, lineUnitPrice, splitOrderLines } from "../.test-build/lib/pos-domain.js";
 
 test("line pricing includes selected variant and modifier prices", () => {
   const items = [{ id: "soup", name: "Soup", category: "Soups", description: "Soup", price: 150, emoji: "🥣", color: "peach" }];

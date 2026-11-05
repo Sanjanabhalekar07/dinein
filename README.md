@@ -36,7 +36,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` t
 
 ## Architecture and state
 
-`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-domain.ts` contains pure pricing, tax, cent-allocation, and order-splitting rules; `tests/pos-domain.test.cjs` exercises those rules with Node's built-in test runner. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
+`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-domain.ts` contains pure pricing, tax, cent-allocation, and order-splitting rules; `tests/pos-domain.test.mjs` exercises those rules with Node's built-in test runner. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
 
 The demo seeds the first visit with sample tables and orders. Existing browser data wins on later visits. Clearing site data resets the demo to the sample state.
 
