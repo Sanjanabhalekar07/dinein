@@ -28,7 +28,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
 - Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, availability, and named price variants.
-- Service report view with date filters, live order counts, transaction history, CSV export, and a printable payment closeout summary.
+- Service report view with date filters, sales by payment method and service type, average check, cancellation and open-order counts, transaction history, CSV export, and a printable payment closeout summary.
 - Demo staff roles for Manager, Cashier, Waiter, and Kitchen with role-specific navigation and checkout controls.
 - Persistent dark/light appearance preference and responsive layouts.
 - Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
