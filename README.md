@@ -6,10 +6,11 @@ A touch-friendly restaurant POS prototype built with the Next.js App Router, Rea
 
 ```bash
 npm install
+npx playwright install chromium
 npm run dev
 ```
 
-Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` to run the business-rule tests, and `npm run build` to create a production build.
+Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` for business-rule tests, `npm run test:e2e` for browser workflows, and `npm run build` to create a production build.
 
 ## Current demo features
 
@@ -36,7 +37,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` t
 
 ## Architecture and state
 
-`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-domain.ts` contains pure pricing, tax, cent-allocation, and order-splitting rules; `tests/pos-domain.test.mjs` exercises those rules with Node's built-in test runner. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
+`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-domain.ts` contains pure pricing, tax, cent-allocation, and order-splitting rules; `tests/pos-domain.test.mjs` exercises those rules with Node's built-in test runner. `tests/e2e/pos-workflows.spec.ts` covers ticket creation and payment, order splitting, and menu persistence through the UI. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
 
 The demo seeds the first visit with sample tables and orders. Existing browser data wins on later visits. Clearing site data resets the demo to the sample state.
 
@@ -56,4 +57,4 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Payment is simulated. Role selection is a client-side demo aid and does not provide authentication or server-enforced permissions. Item-based splitting assigns each order line to one guest; quantities on the same line stay together. Table state changes, order transfer, and table pair merging are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
-- A persistent dark/light theme toggle is available. The included tests cover pricing, tax, split-payment rounding, and order split data consistency; end-to-end UI workflow tests remain to be implemented.
+- A persistent dark/light theme toggle is available. Automated coverage currently focuses on core billing/order rules and three critical browser workflows; role, kitchen, reservations, reports, and narrow-screen workflows still need broader end-to-end coverage.
