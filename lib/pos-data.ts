@@ -27,7 +27,8 @@ export type OrderLine = { id?: string; menuItemId: string; quantity: number; not
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway" | "Delivery"; deliveryDetails?: DeliveryDetails; status: OrderStatus; items: OrderLine[]; rounds?: OrderLine[][]; stockConsumedItems?: OrderLine[]; lastFiredAt?: string; createdAt: string; cancellationReason?: string };
 export type PaymentMethod = "Cash" | "Card" | "UPI";
 export type PaymentTransaction = { id: string; orderId: string; amount: number; method: PaymentMethod; createdAt: string; splitLabel?: string };
-export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[]; menuItems: MenuItem[] };
+export type InventoryMovement = { id: string; menuItemId: string; itemName: string; quantity: number; reason: "restock" | "sale" | "cancellation"; orderId?: string; createdAt: string };
+export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[]; menuItems: MenuItem[]; inventoryMovements?: InventoryMovement[] };
 
 export const menu: MenuItem[] = [
   { id: "burrata", name: "Burrata & tomatoes", category: "Starters", description: "Heirloom tomato, basil oil, sourdough", price: 480, emoji: "\u{1F345}", color: "peach", popular: true },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { initialData, menu, type Category, type DeliveryDetails, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
+import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
@@ -252,12 +252,17 @@ export default function Home() {
     const orderId = currentOrder?.id ?? `#${1051 + data.orders.length}`;
     const firedAt = new Date().toISOString();
     const order: Order = { id: orderId, tableId: orderType === "Dine in" ? selectedTable : null, type: orderType, deliveryDetails: deliveryDetails ?? currentOrder?.deliveryDetails, status: "new", items: cart, rounds: [cart], lastFiredAt: firedAt, createdAt: firedAt };
+    const saleMovements: InventoryMovement[] = Object.entries(requestedStock).flatMap(([menuItemId, quantity]) => {
+      const item = itemById(menuItemId, menuItems);
+      return item?.stockCount === undefined ? [] : [{ id: `${orderId}-sale-${menuItemId}-${firedAt}`, menuItemId, itemName: item.name, quantity: -quantity, reason: "sale", orderId, createdAt: firedAt }];
+    });
     setData((previous) => ({
       ...previous,
       orders: currentOrder
         ? previous.orders.map((candidate) => candidate.id === currentOrder.id ? { ...candidate, items: [...candidate.items, ...cart], rounds: [...(candidate.rounds ?? [candidate.items]), cart], stockConsumedItems: [...(candidate.stockConsumedItems ?? []), ...cart], status: "new", lastFiredAt: firedAt, deliveryDetails: deliveryDetails ?? candidate.deliveryDetails } : candidate)
         : [...previous.orders, { ...order, stockConsumedItems: cart }],
       menuItems: (previous.menuItems ?? menu).map((item) => item.stockCount === undefined ? item : { ...item, stockCount: Math.max(0, item.stockCount - (requestedStock[item.id] ?? 0)) }),
+      inventoryMovements: [...(previous.inventoryMovements ?? []), ...saleMovements],
       tables: order.tableId ? previous.tables.map((table) => table.id === order.tableId ? { ...table, status: "occupied", guests: table.guests ?? 2 } : table) : previous.tables,
     }));
     setCart([]);
@@ -314,7 +319,8 @@ export default function Home() {
       const otherOpenOrder = order.tableId && orders.some((candidate) => candidate.id !== orderId && candidate.tableId === order.tableId && candidate.status !== "paid" && candidate.status !== "cancelled");
       const returnedStock = (order.stockConsumedItems ?? []).reduce<Record<string, number>>((counts, line) => ({ ...counts, [line.menuItemId]: (counts[line.menuItemId] ?? 0) + line.quantity }), {});
       const menuItems = (previous.menuItems ?? menu).map((item) => item.stockCount === undefined ? item : { ...item, stockCount: item.stockCount + (returnedStock[item.id] ?? 0) });
-      return { ...previous, orders, menuItems, tables: order.tableId ? previous.tables.map((table) => table.id === order.tableId ? { ...table, status: otherOpenOrder ? "occupied" : "cleaning", guests: otherOpenOrder ? table.guests : undefined } : table) : previous.tables };
+      const returnedMovements: InventoryMovement[] = Object.entries(returnedStock).flatMap(([menuItemId, quantity]) => { const item = previous.menuItems.find((candidate) => candidate.id === menuItemId); return quantity && item?.stockCount !== undefined ? [{ id: `${orderId}-return-${menuItemId}-${Date.now()}`, menuItemId, itemName: item.name, quantity, reason: "cancellation", orderId, createdAt: new Date().toISOString() }] : []; });
+      return { ...previous, orders, menuItems, inventoryMovements: [...(previous.inventoryMovements ?? []), ...returnedMovements], tables: order.tableId ? previous.tables.map((table) => table.id === order.tableId ? { ...table, status: otherOpenOrder ? "occupied" : "cleaning", guests: otherOpenOrder ? table.guests : undefined } : table) : previous.tables };
     });
     setCancelOrderId(null);
     setNotice(`${order.id} cancelled · ${reason.trim() || "No reason provided"}`);
@@ -401,6 +407,15 @@ export default function Home() {
       const unavailableMenuIds = previous.unavailableMenuIds ?? [];
       return { ...previous, unavailableMenuIds: unavailableMenuIds.includes(menuItemId) ? unavailableMenuIds.filter((id) => id !== menuItemId) : [...unavailableMenuIds, menuItemId] };
     });
+  }
+
+  function restockMenuItem(menuItemId: string, quantity: number) {
+    const item = menuItems.find((candidate) => candidate.id === menuItemId);
+    if (!item || item.stockCount === undefined) { setNotice("Set a stock count in Edit before recording a restock."); return; }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) { setNotice("Restock quantity must be a whole number from 1 to 10,000."); return; }
+    const movement: InventoryMovement = { id: `restock-${menuItemId}-${Date.now()}`, menuItemId, itemName: item.name, quantity, reason: "restock", createdAt: new Date().toISOString() };
+    setData((previous) => ({ ...previous, menuItems: (previous.menuItems ?? menu).map((candidate) => candidate.id === menuItemId && candidate.stockCount !== undefined ? { ...candidate, stockCount: candidate.stockCount + quantity } : candidate), inventoryMovements: [...(previous.inventoryMovements ?? []), movement] }));
+    setNotice(`${quantity} ${item.name} added to stock.`);
   }
 
   function openMenuEditor(item?: MenuItem) {
@@ -588,7 +603,7 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div>{allowedViews.includes("Reports") && <button onClick={() => setView("Reports")}>View all ↗</button>}</div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : order.type}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Order tracking <span className="live-pill"><i /> LIVE</span></h3><p>Follow each ticket from kitchen to table.</p></div>{allowedViews.includes("Kitchen") && <button onClick={() => setView("Kitchen")}>Kitchen board</button>}</div><div className="tracking-list">{activeOrders.length === 0 ? <div className="tracking-empty">No active orders right now.</div> : activeOrders.slice(-3).reverse().map((order) => { const statusIndex = ["new", "preparing", "ready", "served"].indexOf(order.status); const steps = ["New", "Prep", "Ready", "Served"]; return <div className="tracking-order" key={order.id}><div className="tracking-order-meta"><b>{order.id}</b><span>{order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name ?? "--"}` : "Takeaway"}</span><small>{minutesAgo(order.createdAt)}</small></div><div className="tracking-steps" aria-label={`Order ${order.id} status: ${order.status}`}>{steps.map((step, index) => <span key={step} className={index < statusIndex ? "step-done" : index === statusIndex ? "step-current" : ""}><i />{step}</span>)}</div></div>; })}</div></section></div>
-          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
+          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} restockMenuItem={restockMenuItem} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
@@ -631,11 +646,13 @@ type WorkflowProps = {
   mergeTables: (primaryId: string, secondaryId: string) => void;
   unmergeTable: (secondaryId: string) => void;
   toggleMenuAvailability: (menuItemId: string) => void;
+  restockMenuItem: (menuItemId: string, quantity: number) => void;
 };
 
-function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability }: WorkflowProps) {
+function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability, restockMenuItem }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
+  const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
   const [reportRange, setReportRange] = useState("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
   const lowStockItems = menuItems.filter((item) => item.stockCount !== undefined && item.stockCount > 0 && item.stockCount <= (item.lowStockThreshold ?? 5));
@@ -707,7 +724,20 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   if (view === "Menu") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Menu management</h2><p>Add dishes, manage stock, and see low-stock alerts.</p></div><div className="menu-admin-actions"><span className="menu-count">{menuItems.length} items · {menuItems.filter((item) => !(data.unavailableMenuIds ?? []).includes(item.id) && item.stockCount !== 0).length} available</span><button className="primary-button" onClick={() => openMenuEditor()}>＋ Add menu item</button></div></div>
     <div className="stock-summary"><span><b>{menuItems.filter((item) => item.stockCount !== undefined).length}</b> tracked items</span><span className={lowStockItems.length ? "stock-alert" : ""}><b>{lowStockItems.length}</b> low stock</span><span className={menuItems.some((item) => item.stockCount === 0) ? "stock-alert" : ""}><b>{menuItems.filter((item) => item.stockCount === 0).length}</b> out of stock</span><small>Stock is deducted when a ticket is sent to the kitchen.</small></div>
-    <div className="availability-grid">{menuItems.map((item) => { const manuallyUnavailable = (data.unavailableMenuIds ?? []).includes(item.id); const outOfStock = item.stockCount === 0; const lowStock = item.stockCount !== undefined && item.stockCount > 0 && item.stockCount <= (item.lowStockThreshold ?? 5); const unavailable = manuallyUnavailable || outOfStock; return <article className={`workflow-card availability-card ${unavailable ? "is-unavailable" : ""}`} key={item.id}><span className={`food-art ${item.color}`}><span>{item.emoji}</span></span><div className="availability-copy"><span className="ticket-kicker">{item.category.toUpperCase()}</span><h3>{item.name}</h3><p>{item.description}</p><b>{money(item.price)}</b>{item.stockCount !== undefined && <small className={`stock-badge ${outOfStock ? "stock-empty" : lowStock ? "stock-low" : ""}`}>{outOfStock ? "Out of stock" : lowStock ? `Low stock · ${item.stockCount} left` : `${item.stockCount} in stock`}</small>}</div><div className="availability-actions"><button className="menu-edit-button" onClick={() => openMenuEditor(item)}>Edit</button><button disabled={outOfStock} className={`availability-toggle ${manuallyUnavailable || outOfStock ? "off" : ""}`} aria-pressed={!unavailable} onClick={() => toggleMenuAvailability(item.id)}>{outOfStock ? "Restock to enable" : manuallyUnavailable ? "Unavailable" : "Available"}<i /></button></div></article>; })}</div>
+    <div className="availability-grid">{menuItems.map((item) => {
+      const manuallyUnavailable = (data.unavailableMenuIds ?? []).includes(item.id);
+      const outOfStock = item.stockCount === 0;
+      const lowStock = item.stockCount !== undefined && item.stockCount > 0 && item.stockCount <= (item.lowStockThreshold ?? 5);
+      const unavailable = manuallyUnavailable || outOfStock;
+      const restockAmount = restockAmounts[item.id] ?? "10";
+      return <article className={`workflow-card availability-card ${unavailable ? "is-unavailable" : ""}`} key={item.id}>
+        <span className={`food-art ${item.color}`}><span>{item.emoji}</span></span>
+        <div className="availability-copy"><span className="ticket-kicker">{item.category.toUpperCase()}</span><h3>{item.name}</h3><p>{item.description}</p><b>{money(item.price)}</b>{item.stockCount !== undefined && <small className={`stock-badge ${outOfStock ? "stock-empty" : lowStock ? "stock-low" : ""}`}>{outOfStock ? "Out of stock" : lowStock ? `Low stock · ${item.stockCount} left` : `${item.stockCount} in stock`}</small>}</div>
+        <div className="availability-actions"><button className="menu-edit-button" onClick={() => openMenuEditor(item)}>Edit</button><button disabled={outOfStock} className={`availability-toggle ${manuallyUnavailable || outOfStock ? "off" : ""}`} aria-pressed={!unavailable} onClick={() => toggleMenuAvailability(item.id)}>{outOfStock ? "Restock to enable" : manuallyUnavailable ? "Unavailable" : "Available"}<i /></button></div>
+        {item.stockCount !== undefined && <div className="restock-controls"><label><span>Received</span><input type="number" min="1" max="10000" step="1" aria-label={`Received quantity for ${item.name}`} value={restockAmount} onChange={(event) => setRestockAmounts((previous) => ({ ...previous, [item.id]: event.target.value }))} /></label><button onClick={() => restockMenuItem(item.id, Number(restockAmount))}>Add stock</button></div>}
+      </article>;
+    })}</div>
+    <section className="workflow-card inventory-history"><div className="transaction-history-head"><div><h3>Recent stock movements</h3><p>Restocks, kitchen sends, and cancelled-order returns.</p></div><span>{data.inventoryMovements?.length ?? 0} movements</span></div>{!data.inventoryMovements?.length ? <div className="transaction-empty">No stock movements recorded yet.</div> : <div className="inventory-movement-list">{[...data.inventoryMovements].slice(-8).reverse().map((movement) => <div className="inventory-movement" key={movement.id}><span className={`movement-quantity ${movement.quantity < 0 ? "movement-out" : "movement-in"}`}>{movement.quantity > 0 ? "+" : ""}{movement.quantity}</span><span className="transaction-description"><b>{movement.itemName}</b><small>{movement.reason === "restock" ? "Stock received" : movement.reason === "sale" ? `Sent to kitchen · ${movement.orderId ?? "Order"}` : `Order cancelled · ${movement.orderId ?? "Order"}`} · {new Date(movement.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</small></span></div>)}</div>}</section>
   </div>;
 
   return <div className="workflow-view">
