@@ -132,8 +132,10 @@ test("delivery checkout validates recipient details and sends them to the kitche
   await expect(deliveryTicket).toContainText("9876543210");
 });
 
-test("inventory decreases when a stocked dish is sent and increases after restocking", async ({ page }) => {
+test("inventory movements track restocks and cancellation after multiple kitchen rounds", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  await page.getByRole("button", { name: /Table 02, available/ }).click();
   await navigation.getByRole("button", { name: /Menu/ }).click();
   await page.getByRole("button", { name: /Add menu item/ }).click();
   await page.getByLabel("Item name").fill("Limited batch tart");
@@ -155,6 +157,14 @@ test("inventory decreases when a stocked dish is sent and increases after restoc
   await itemCard.getByLabel("Received quantity for Limited batch tart").fill("3");
   await itemCard.getByRole("button", { name: "Add stock" }).click();
   await expect(itemCard.locator(".stock-badge")).toHaveText("4 in stock");
+
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  await page.getByRole("button", { name: /Table 02, occupied/ }).click();
+  await page.getByRole("textbox", { name: "Search menu" }).fill("Limited batch tart");
+  await page.getByRole("button", { name: /Limited batch tart/ }).click();
+  await page.getByRole("button", { name: /Add to ticket/ }).click();
+  await page.getByRole("button", { name: /Send additional items/ }).click();
+  await expect(page.getByRole("status")).toContainText("Additional items sent");
 
   await navigation.getByRole("button", { name: /Kitchen display/ }).click();
   const stockedTicket = page.getByRole("article").filter({ has: page.getByText("Limited batch tart") });
