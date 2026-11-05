@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
-import { allocateCents, calculateBill, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
+import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
@@ -36,6 +36,7 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
 const lineVariantLabel = (line: OrderLine) => line.variant ? `${line.variant.label} · ` : "";
 const startingPrice = (item: MenuItem) => item.variants?.length ? Math.min(...item.variants.map((variant) => variant.price)) : item.price;
 const dateTimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+const dateForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const formatReservationTime = (date: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(new Date(date));
 const defaultFloorPosition = (index: number) => index < 4
   ? { column: index + 1, row: 1 }

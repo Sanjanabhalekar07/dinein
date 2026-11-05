@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allocateCents, calculateBill, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines } from "../.test-build/lib/pos-domain.js";
+import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines } from "../.test-build/lib/pos-domain.js";
 
 test("line pricing includes selected variant and modifier prices", () => {
   const items = [{ id: "soup", name: "Soup", category: "Soups", description: "Soup", price: 150, emoji: "🥣", color: "peach" }];
@@ -29,6 +29,20 @@ test("report periods include their local start boundary and exclude prior period
   assert.deepEqual(reportPeriodBounds("This week", now), {
     start: new Date(2026, 10, 1), end: now,
   });
+});
+
+test("custom report dates include both complete local days and reject invalid ranges", () => {
+  const first = new Date(2026, 10, 3, 0, 0).toISOString();
+  const last = new Date(2026, 10, 5, 23, 59, 59, 999).toISOString();
+  const before = new Date(2026, 10, 2, 23, 59, 59, 999).toISOString();
+  const after = new Date(2026, 10, 6, 0, 0).toISOString();
+
+  assert.equal(isWithinCustomReportPeriod(first, "2026-11-03", "2026-11-05"), true);
+  assert.equal(isWithinCustomReportPeriod(last, "2026-11-03", "2026-11-05"), true);
+  assert.equal(isWithinCustomReportPeriod(before, "2026-11-03", "2026-11-05"), false);
+  assert.equal(isWithinCustomReportPeriod(after, "2026-11-03", "2026-11-05"), false);
+  assert.equal(customReportPeriodBounds("2026-11-06", "2026-11-05"), null);
+  assert.equal(customReportPeriodBounds("not-a-date", "2026-11-05"), null);
 });
 
 test("payment allocation rounds to cents and reconciles to the total", () => {
