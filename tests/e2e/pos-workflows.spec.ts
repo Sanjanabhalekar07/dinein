@@ -25,7 +25,7 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
 });
 
 test("staff can split an open table ticket and select the new bill", async ({ page }) => {
-  await page.getByRole("button", { name: "Floor plan" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /Floor plan/ }).click();
   await page.getByRole("button", { name: /Table 01, occupied/ }).click();
   await page.getByRole("button", { name: /Split items into a new ticket/ }).click();
   await expect(page.getByRole("dialog", { name: "Move items to a new ticket" })).toBeVisible();
@@ -38,7 +38,8 @@ test("staff can split an open table ticket and select the new bill", async ({ pa
 });
 
 test("menu changes persist across reloads", async ({ page }) => {
-  await page.getByRole("button", { name: "Menu" }).click();
+  const menuNav = page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /Menu/ });
+  await menuNav.click();
   await page.getByRole("button", { name: /Add menu item/ }).click();
   await page.getByLabel("Item name").fill("Playwright test dish");
   await page.getByLabel("Description").fill("Automated workflow sample");
@@ -49,7 +50,7 @@ test("menu changes persist across reloads", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(menuNav).toBeVisible();
+  await menuNav.click();
   await expect(page.getByText("Playwright test dish", { exact: true })).toBeVisible();
 });
