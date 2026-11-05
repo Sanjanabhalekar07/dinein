@@ -259,6 +259,21 @@ test("POS workspace fits a narrow touchscreen viewport without page overflow", a
   }
 });
 
+test("phone touch controls provide at least 44px targets", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+  const targetSizes = await page.locator(".nav-link, .category-tabs button, .ticket-type button, .search-box").evaluateAll((elements) => elements.map((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height, name: element.getAttribute("aria-label") ?? element.textContent?.trim() ?? element.className };
+  }));
+  expect(targetSizes.length).toBeGreaterThan(10);
+  for (const target of targetSizes) {
+    expect(target.width, `${target.name} is too narrow`).toBeGreaterThanOrEqual(44);
+    expect(target.height, `${target.name} is too short`).toBeGreaterThanOrEqual(44);
+  }
+});
+
 test("cancelling a preparing ticket records its reason and removes it from kitchen work", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
   await navigation.getByRole("button", { name: /Kitchen display/ }).click();
