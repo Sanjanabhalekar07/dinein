@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { initialData, loadPosData, menu, savePosData, type Category, type DeliveryDetails, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
+import { initialData, menu, type Category, type DeliveryDetails, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
+import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 type StaffRole = "Manager" | "Cashier" | "Waiter" | "Kitchen";
@@ -65,6 +66,11 @@ export default function Home() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [selectedServiceOrderId, setSelectedServiceOrderId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
+  const [storageStatus, setStorageStatus] = useState<"loading" | "saved" | "saving" | "error">("loading");
+  const [storageErrorAction, setStorageErrorAction] = useState<"load" | "save">("load");
+  const [loadRetry, setLoadRetry] = useState(0);
+  const [saveRetry, setSaveRetry] = useState(0);
   const [checkoutOrderId, setCheckoutOrderId] = useState<string | null>(null);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [splitPayment, setSplitPayment] = useState(false);
@@ -101,12 +107,32 @@ export default function Home() {
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [], menuItems: saved.menuItems ?? menu }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
-  }, []);
+    let cancelled = false;
+    fetchPosSnapshot().then((saved) => {
+      if (cancelled) return;
+      if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [], menuItems: saved.menuItems ?? menu });
+      setStorageReady(true);
+      setStorageStatus("saved");
+    }).catch(() => {
+      if (cancelled) return;
+      setStorageReady(false);
+      setStorageErrorAction("load");
+      setStorageStatus("error");
+    }).finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
+  }, [loadRetry]);
 
   useEffect(() => {
-    if (loaded) savePosData(data).catch(() => setNotice("Could not save changes to this device."));
-  }, [data, loaded]);
+    if (!loaded || !storageReady) return;
+    const timer = window.setTimeout(() => {
+      setStorageStatus("saving");
+      persistPosSnapshot(data).then(() => setStorageStatus("saved")).catch(() => {
+        setStorageErrorAction("save");
+        setStorageStatus("error");
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [data, loaded, storageReady, saveRetry]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -465,7 +491,7 @@ export default function Home() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumb">Workspace <span>/</span> <b>{view}</b></div>
-          <div className="top-actions"><span className="open-status"><i /> POS ready</span><span className="top-divider" /><span className="date-label">{dateLabel}</span><button className="icon-button theme-toggle" aria-pressed={theme === "dark"} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}>{theme === "dark" ? "\u263c" : "\u263e"}</button><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
+          <div className="top-actions"><span className="open-status"><i /> POS ready</span><button className={`storage-indicator storage-${storageStatus}`} aria-live="polite" onClick={storageStatus === "error" ? () => { if (storageErrorAction === "load") { setStorageStatus("loading"); setLoadRetry((attempt) => attempt + 1); } else { setStorageStatus("saving"); setSaveRetry((attempt) => attempt + 1); } } : undefined} disabled={storageStatus !== "error"} title={storageStatus === "error" ? "Retry local storage" : "Local POS data status"}><i />{storageStatus === "loading" ? "Loading local data" : storageStatus === "saving" ? "Saving locally" : storageStatus === "error" ? "Storage issue · Retry" : "Saved on this device"}</button><span className="top-divider" /><span className="date-label">{dateLabel}</span><button className="icon-button theme-toggle" aria-pressed={theme === "dark"} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}>{theme === "dark" ? "\u263c" : "\u263e"}</button><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
         </header>
 
         <section className="page-content">
