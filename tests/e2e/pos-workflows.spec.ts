@@ -5,10 +5,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
 });
 
-async function waitForLocalSave(page: import("@playwright/test").Page) {
-  const status = page.locator(".storage-indicator");
-  await expect(status).toHaveText("Saving locally");
-  await expect(status).toHaveText("Saved on this device");
+async function readSavedSnapshot(page: import("@playwright/test").Page) {
+  return page.evaluate(() => new Promise<{ menuItems: Array<{ name: string }>; transactions: unknown[] } | null>((resolve, reject) => {
+    const request = indexedDB.open("dinein-pos", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const get = db.transaction("workspace", "readonly").objectStore("workspace").get("pos");
+      get.onsuccess = () => { resolve(get.result ?? null); db.close(); };
+      get.onerror = () => { reject(get.error); db.close(); };
+    };
+  }));
 }
 
 test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => {
@@ -24,7 +31,7 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
   await page.getByRole("button", { name: /Complete simulated payment/ }).click();
   await expect(page.getByRole("status")).toContainText("paid");
 
-  await waitForLocalSave(page);
+  await expect.poll(async () => (await readSavedSnapshot(page))?.transactions.length ?? 0).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Reports" }).click();
   await expect(page.getByText("Transaction history")).toBeVisible();
   await expect(page.getByText("#1054", { exact: true })).toBeVisible();
@@ -55,7 +62,7 @@ test("menu changes persist across reloads", async ({ page }) => {
   await page.getByRole("button", { name: "Add to menu" }).click();
   await expect(page.getByRole("status")).toContainText("added to the menu");
 
-  await waitForLocalSave(page);
+  await expect.poll(async () => (await readSavedSnapshot(page))?.menuItems.some((item) => item.name === "Playwright test dish") ?? false).toBe(true);
   await page.reload();
   await expect(menuNav).toBeVisible();
   await menuNav.click();
@@ -180,4 +187,50 @@ test("POS workspace fits a narrow touchscreen viewport without page overflow", a
   }));
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
   await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
+});
+
+test("cancelling a preparing ticket records its reason and removes it from kitchen work", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Kitchen display/ }).click();
+  const ticket = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "#1048" }) });
+  await ticket.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog", { name: "Cancel this order?" })).toBeVisible();
+  await page.getByLabel("Reason").selectOption("Item unavailable");
+  await page.getByRole("button", { name: "Cancel ticket" }).click();
+  await expect(page.getByRole("status")).toContainText("#1048 cancelled · Item unavailable");
+  await expect(page.getByRole("article").filter({ has: page.getByRole("heading", { name: "#1048" }) })).toHaveCount(0);
+
+  await navigation.getByRole("button", { name: /Reports/ }).click();
+  await expect(page.locator(".shift-summary-grid")).toContainText("1");
+  await expect(page.locator(".shift-summary-grid")).toContainText("CANCELLED");
+});
+
+test("service report period selector updates its chart and closeout labels", async ({ page }) => {
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /Reports/ }).click();
+  const range = page.locator(".report-select");
+  await expect(page.locator(".report-chart-head")).toContainText("Today");
+  await range.selectOption("This week");
+  await expect(page.locator(".report-chart-head")).toContainText("This week");
+  await expect(page.locator(".shift-summary-head")).toContainText("this week");
+  await range.selectOption("This month");
+  await expect(page.locator(".report-chart-head")).toContainText("This month");
+  await expect(page.locator(".shift-summary-head")).toContainText("this month");
+});
+
+test("POS workspace remains usable at tablet touch widths", async ({ page }) => {
+  for (const width of [768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+      overflow: Array.from(document.querySelectorAll("body *"))
+        .map((element) => ({ element: element.tagName.toLowerCase(), className: typeof element.className === "string" ? element.className : "", right: Math.round(element.getBoundingClientRect().right) }))
+        .filter((entry) => entry.right > document.documentElement.clientWidth + 1)
+        .slice(0, 8),
+    }));
+    expect(dimensions.content, `unexpected horizontal overflow at ${width}px: ${JSON.stringify(dimensions.overflow)}`).toBeLessThanOrEqual(dimensions.viewport);
+    await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
+  }
 });
