@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
+import { allocateCents, calculateBill, lineTotal, lineUnitPrice, splitOrderLines } from "@/lib/pos-domain";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
@@ -32,7 +33,6 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
   Drinks: [{ id: "extra-syrup", label: "Add flavor syrup", price: 30 }, { id: "less-ice", label: "Less ice", price: 0 }],
   Desserts: [{ id: "ice-cream", label: "Add ice cream", price: 80 }, { id: "extra-cream", label: "Extra cream", price: 40 }],
 };
-const lineUnitPrice = (line: OrderLine, items: MenuItem[] = menu) => (line.variant?.price ?? itemById(line.menuItemId, items)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
 const lineVariantLabel = (line: OrderLine) => line.variant ? `${line.variant.label} · ` : "";
 const startingPrice = (item: MenuItem) => item.variants?.length ? Math.min(...item.variants.map((variant) => variant.price)) : item.price;
 const dateTimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -42,16 +42,6 @@ const defaultFloorPosition = (index: number) => index < 4
   : index < 7
     ? { column: index - 2, row: 2 }
     : { column: (index - 7) % 4 + 1, row: 3 + Math.floor((index - 7) / 4) };
-const allocateCents = (total: number, weights: number[]) => {
-  const cents = Math.round(total * 100);
-  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-  if (!weightTotal) return weights.map(() => 0);
-  const raw = weights.map((weight) => cents * weight / weightTotal);
-  const allocated = raw.map(Math.floor);
-  for (let remainder = cents - allocated.reduce((sum, amount) => sum + amount, 0), index = 0; remainder > 0; remainder--, index++) allocated[index % allocated.length]++;
-  return allocated.map((amount) => amount / 100);
-};
-
 export default function Home() {
   const [data, setData] = useState<PosData>(initialData);
   const [selectedTable, setSelectedTable] = useState<string | null>("t2");
@@ -208,32 +198,31 @@ export default function Home() {
   const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid" && order.status !== "cancelled");
   const orderPendingCancellation = data.orders.find((order) => order.id === cancelOrderId && order.status !== "paid" && order.status !== "cancelled");
   const reservationTable = data.tables.find((table) => table.id === reservationTableId);
-  const checkoutSubtotal = checkoutOrder ? lineTotal(checkoutOrder.items) : 0;
-  const checkoutDiscount = checkoutSubtotal * discountPercent / 100;
-  const checkoutTax = (checkoutSubtotal - checkoutDiscount) * 0.08;
-  const checkoutTotal = checkoutSubtotal - checkoutDiscount + checkoutTax;
+  const checkoutSubtotal = checkoutOrder ? lineTotal(checkoutOrder.items, menuItems) : 0;
+  const checkoutBill = calculateBill(checkoutSubtotal, discountPercent);
+  const checkoutDiscount = checkoutBill.discount;
+  const checkoutTax = checkoutBill.tax;
+  const checkoutTotal = checkoutBill.total;
 
   function splitOpenOrder() {
     if (!splitOrder) return;
     const selected = splitOrder.items.filter((line, index) => splitLineKeys.includes(line.id ?? `${line.menuItemId}-${index}`));
     if (!selected.length) { setNotice("Choose at least one item to move to the new ticket."); return; }
     if (selected.length === splitOrder.items.length) { setNotice("Leave at least one item on the original ticket."); return; }
-    const selectedIds = new Set(selected.map((line) => line.id ?? `${line.menuItemId}-${splitOrder.items.indexOf(line)}`));
-    const remaining = splitOrder.items.filter((line, index) => !selectedIds.has(line.id ?? `${line.menuItemId}-${index}`));
     const createdAt = new Date().toISOString();
     const nextNumber = data.orders.reduce((largest, order) => Math.max(largest, Number(order.id.replace(/^#/, "")) || 0), 1050) + 1;
     const newOrderId = `#${nextNumber}`;
-    const partition = (lines: OrderLine[] | undefined, move: boolean) => lines?.filter((line, index) => selectedIds.has(line.id ?? `${line.menuItemId}-${index}`) === move);
-    const newOrder: Order = { ...splitOrder, id: newOrderId, items: selected, rounds: [selected], stockConsumedItems: partition(splitOrder.stockConsumedItems ?? splitOrder.items, true), createdAt };
+    const result = splitOrderLines(splitOrder, splitLineKeys, newOrderId, createdAt);
+    if (!result) return;
     setData((previous) => ({
       ...previous,
-      orders: [...previous.orders.filter((order) => order.id !== splitOrder.id), { ...splitOrder, items: remaining, rounds: (splitOrder.rounds ?? [splitOrder.items]).map((round) => partition(round, false) ?? []).filter((round) => round.length > 0), stockConsumedItems: partition(splitOrder.stockConsumedItems ?? splitOrder.items, false) }, newOrder],
+      orders: [...previous.orders.filter((order) => order.id !== splitOrder.id), result.source, result.created],
     }));
     if (splitOrder.tableId) setSelectedTableOrderId(newOrderId);
     else setSelectedServiceOrderId(newOrderId);
     setSplitOrderId(null);
     setSplitLineKeys([]);
-    setNotice(`${selected.length} item${selected.length === 1 ? "" : "s"} moved to ${newOrderId}.`);
+    setNotice(`${result.created.items.length} item${result.created.items.length === 1 ? "" : "s"} moved to ${newOrderId}.`);
   }
 
   function addToCart(item: MenuItem) {
@@ -548,10 +537,6 @@ export default function Home() {
     return activeOrders.filter((order) => order.tableId === table.id).flatMap((order) => order.items);
   }
 
-  function lineTotal(lines: OrderLine[]) {
-    return lines.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
-  }
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -597,7 +582,7 @@ export default function Home() {
                 <div className="table-map">
                   {data.tables.map((table, index) => {
                     const orderLines = tableOrderLines(table);
-                    const totalAmount = lineTotal(orderLines);
+                    const totalAmount = lineTotal(orderLines, menuItems);
                     const primaryTable = table.mergedInto ? data.tables.find((candidate) => candidate.id === table.mergedInto) : undefined;
                     const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
                     const selectionId = table.mergedInto ?? table.id;
@@ -641,7 +626,7 @@ export default function Home() {
               </div>
               <button className="add-note" onClick={() => setNotice("Add item-specific instructions by customizing a menu item.")}>＋ &nbsp; Add a note or special request</button>
               <div className="totals"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Tax <small>(8%)</small></span><b>{money(tax)}</b></div><div className="total-line"><span>Total</span><b>{money(total)}</b></div></div>
-              {currentOrder && cart.length === 0 ? <>{canTakePayment ? <button className="send-button checkout-button" onClick={() => setCheckoutOrderId(currentOrder.id)}><span>Go to checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)} <i>?</i></b></button> : <button className="send-button" disabled><span>Awaiting cashier checkout</span><b>{money(lineTotal(currentOrder.items) * 1.08)}</b></button>}<button className="secondary-button payment-print-button" onClick={() => { setSplitOrderId(currentOrder.id); setSplitLineKeys([]); }}>Split items into a new ticket</button></> : <button className="send-button" disabled={cart.length === 0} onClick={placeOrder}><span>{currentOrder ? "Send additional items" : "Send to kitchen"}</span><b>{money(total)} <i>?</i></b></button>}
+              {currentOrder && cart.length === 0 ? <>{canTakePayment ? <button className="send-button checkout-button" onClick={() => setCheckoutOrderId(currentOrder.id)}><span>Go to checkout</span><b>{money(lineTotal(currentOrder.items, menuItems) * 1.08)} <i>?</i></b></button> : <button className="send-button" disabled><span>Awaiting cashier checkout</span><b>{money(lineTotal(currentOrder.items, menuItems) * 1.08)}</b></button>}<button className="secondary-button payment-print-button" onClick={() => { setSplitOrderId(currentOrder.id); setSplitLineKeys([]); }}>Split items into a new ticket</button></> : <button className="send-button" disabled={cart.length === 0} onClick={placeOrder}><span>{currentOrder ? "Send additional items" : "Send to kitchen"}</span><b>{money(total)} <i>?</i></b></button>}
               <div className="ticket-help"><span>◉</span> You can split the bill at checkout</div>
             </section>
           </div>
