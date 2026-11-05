@@ -24,6 +24,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Ticket cancellation for new or preparing orders, with a saved reason and table cleanup.
 - Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal or item-assigned bill splits for 2–8 guests with individual payment methods.
 - Persisted transaction history with each payment method and amount.
+- Open orders can be split into separate kitchen tickets and bills by moving complete item lines; table ticket selection stays available and inventory is not deducted again.
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs. Drag-and-drop or keyboard movement changes the persisted floor plan layout.
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Manual menu availability toggles plus optional per-item stock counts, low-stock warnings, quick restocking, and a recent inventory movement log for receipts, kitchen sends, and cancelled-order returns.
