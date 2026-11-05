@@ -50,6 +50,39 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
   await expect(page.getByText("#1054", { exact: true })).toHaveCount(0);
 });
 
+test("custom report dates follow the browser's local calendar in a non-UTC timezone", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: "http://localhost:3000", timezoneId: "America/Los_Angeles" });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+    await page.getByRole("button", { name: /Burrata & tomatoes/ }).click();
+    await page.getByRole("button", { name: /Add to ticket/ }).click();
+    await page.getByRole("button", { name: /Send to kitchen/ }).click();
+    await page.getByRole("button", { name: /Go to checkout/ }).click();
+    await page.getByRole("button", { name: /Complete simulated payment/ }).click();
+    await expect(page.getByRole("status")).toContainText("paid");
+    await page.getByRole("button", { name: "Reports" }).click();
+    await expect(page.locator(".transaction-history")).toContainText("#1054");
+    await page.getByLabel("Report period").selectOption("Custom");
+
+    const { today, yesterday } = await page.evaluate(() => {
+      const value = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+      const previous = new Date();
+      previous.setDate(previous.getDate() - 1);
+      return { today: value(new Date()), yesterday: value(previous) };
+    });
+    await page.getByLabel("Report start date").fill(today);
+    await page.getByLabel("Report end date").fill(today);
+    await expect(page.locator(".transaction-history")).toContainText("#1054");
+    await page.getByLabel("Report start date").fill(yesterday);
+    await page.getByLabel("Report end date").fill(yesterday);
+    await expect(page.locator(".transaction-history")).toContainText("No completed payments in this period");
+  } finally {
+    await context.close();
+  }
+});
+
 test("staff can split an open table ticket and select the new bill", async ({ page }) => {
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /Floor plan/ }).click();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /New order/ }).click();

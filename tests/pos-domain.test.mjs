@@ -43,6 +43,8 @@ test("custom report dates include both complete local days and reject invalid ra
   assert.equal(isWithinCustomReportPeriod(after, "2026-11-03", "2026-11-05"), false);
   assert.equal(customReportPeriodBounds("2026-11-06", "2026-11-05"), null);
   assert.equal(customReportPeriodBounds("not-a-date", "2026-11-05"), null);
+  assert.equal(customReportPeriodBounds("2026-02-30", "2026-03-01"), null);
+  assert.equal(customReportPeriodBounds("2025-01-01", "2026-01-02"), null);
 });
 
 test("payment allocation rounds to cents and reconciles to the total", () => {
