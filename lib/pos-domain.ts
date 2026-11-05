@@ -24,7 +24,8 @@ export function allocateCents(total: number, weights: number[]) {
   if (!weights.length || weightTotal === 0) return weights.map(() => 0);
   const raw = weights.map((weight) => cents * Math.max(0, weight) / weightTotal);
   const allocated = raw.map(Math.floor);
-  for (let remainder = cents - allocated.reduce((sum, amount) => sum + amount, 0), index = 0; remainder > 0; remainder--, index++) allocated[index % allocated.length]++;
+  const remainderOrder = raw.map((amount, index) => ({ index, fraction: amount - Math.floor(amount) })).sort((left, right) => right.fraction - left.fraction || left.index - right.index);
+  for (let remainder = cents - allocated.reduce((sum, amount) => sum + amount, 0), index = 0; remainder > 0; remainder--, index++) allocated[remainderOrder[index % remainderOrder.length].index]++;
   return allocated.map((amount) => amount / 100);
 }
 

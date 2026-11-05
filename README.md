@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run build` to create a production build.
+Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` to run the business-rule tests, and `npm run build` to create a production build.
 
 ## Current demo features
 
@@ -36,7 +36,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 
 ## Architecture and state
 
-`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
+`lib/pos-data.ts` defines the TypeScript domain types, demo menu and table data, and IndexedDB read/write helpers. `lib/pos-domain.ts` contains pure pricing, tax, cent-allocation, and order-splitting rules; `tests/pos-domain.test.cjs` exercises those rules with Node's built-in test runner. `lib/pos-service.ts` adds realistic asynchronous loading and saving around the local store. `app/page.tsx` is the interactive client screen and owns the current POS state. The root layout remains a server component and sets app metadata. State writes are persisted to the browser database after the initial load.
 
 The demo seeds the first visit with sample tables and orders. Existing browser data wins on later visits. Clearing site data resets the demo to the sample state.
 
@@ -44,6 +44,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 
 - Menu prices are stored in Indian rupees and quantity is a positive integer.
 - Tax is currently simulated as 8% after any discount.
+- Split-payment amounts are allocated in whole paise using the largest-remainder method so shares add up exactly to the bill total.
 - Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
 - Completing checkout marks the order Paid and moves its table to Cleaning.
 - Reservations require a guest name, future arrival time, and party size within the table’s seating capacity.
@@ -55,4 +56,4 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Payment is simulated. Role selection is a client-side demo aid and does not provide authentication or server-enforced permissions. Item-based splitting assigns each order line to one guest; quantities on the same line stay together. Table state changes, order transfer, and table pair merging are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
-- A persistent dark/light theme toggle is available. Automated workflow tests remain to be implemented.
+- A persistent dark/light theme toggle is available. The included tests cover pricing, tax, split-payment rounding, and order split data consistency; end-to-end UI workflow tests remain to be implemented.
