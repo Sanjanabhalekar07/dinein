@@ -11,14 +11,17 @@ export type MenuItem = {
   emoji: string;
   color: string;
   popular?: boolean;
+  variants?: MenuVariant[];
 };
+
+export type MenuVariant = { id: string; label: string; price: number };
 
 export type ReservationDetails = { guestName: string; guests: number; time: string };
 export type DeliveryDetails = { recipientName: string; phone: string; address: string };
 export type FloorPosition = { column: number; row: number };
 export type Table = { id: string; name: string; seats: number; status: TableStatus; floorPosition?: FloorPosition; guests?: number; reservation?: ReservationDetails; mergedInto?: string; mergedOrderIds?: string[]; mergedOriginalStatus?: Exclude<TableStatus, "merged">; mergedOriginalGuests?: number; mergedBaseStatus?: Exclude<TableStatus, "merged">; mergedBaseGuests?: number };
 export type MenuModifier = { id: string; label: string; price: number };
-export type OrderLine = { id?: string; menuItemId: string; quantity: number; note?: string; modifiers?: MenuModifier[] };
+export type OrderLine = { id?: string; menuItemId: string; quantity: number; note?: string; variant?: MenuVariant; modifiers?: MenuModifier[] };
 export type Order = { id: string; tableId: string | null; type: "Dine in" | "Takeaway" | "Delivery"; deliveryDetails?: DeliveryDetails; status: OrderStatus; items: OrderLine[]; createdAt: string; cancellationReason?: string };
 export type PaymentMethod = "Cash" | "Card" | "UPI";
 export type PaymentTransaction = { id: string; orderId: string; amount: number; method: PaymentMethod; createdAt: string; splitLabel?: string };

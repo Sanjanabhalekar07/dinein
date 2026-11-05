@@ -18,7 +18,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Searchable, category-filtered menu of 54 sample dishes across starters, soups, mains, breads and sides, pizza, drinks, and desserts, each with an icon and INR price. Menu photography is not bundled yet.
 - Dine-in, takeaway, and delivery tickets with quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
 - Delivery recipient, phone, and address capture with validation, persistence, kitchen visibility, and checkout access for open takeaway or delivery tickets.
-- Item customization with category-specific add-ons, per-item quantities, and kitchen instructions.
+- Item customization with named size or price variants, category-specific add-ons, per-item quantities, and kitchen instructions.
 - Simulated checkout that records a paid status, moves the table to Cleaning, and offers a printable guest bill.
 - Kitchen queue with new → preparing → ready → served ticket transitions.
 - Ticket cancellation for new or preparing orders, with a saved reason and table cleanup.
@@ -27,7 +27,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs. Drag-and-drop or keyboard movement changes the persisted floor plan layout.
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
-- Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, and availability.
+- Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, availability, and named price variants.
 - Service report view with date filters, live order counts, transaction history, CSV export, and a printable payment closeout summary.
 - Demo staff roles for Manager, Cashier, Waiter, and Kitchen with role-specific navigation and checkout controls.
 - Persistent dark/light appearance preference and responsive layouts.
