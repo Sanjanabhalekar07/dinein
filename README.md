@@ -14,21 +14,23 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint and `npm run buil
 ## Current demo features
 
 - Restaurant service dashboard with sample sales, order, table, and ticket-time metrics.
-- Visual dining-room table selector with Available, Occupied, Reserved, and Cleaning states.
-- Searchable, category-filtered menu of 54 sample dishes across starters, soups, mains, breads and sides, pizza, drinks, and desserts, each with an icon and INR price.
-- Dine-in and takeaway tickets, quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
+- Visual dining-room table selector with Available, Occupied, Reserved, and Cleaning states. Managers can rearrange tables by dragging or using arrow keys; positions persist locally.
+- Searchable, category-filtered menu of 54 sample dishes across starters, soups, mains, breads and sides, pizza, drinks, and desserts, each with an icon and INR price. Menu photography is not bundled yet.
+- Dine-in, takeaway, and delivery tickets with quantity controls, subtotal/tax/total calculation, and send-to-kitchen action.
+- Delivery recipient, phone, and address capture with validation, persistence, kitchen visibility, and checkout access for open takeaway or delivery tickets.
 - Item customization with category-specific add-ons, per-item quantities, and kitchen instructions.
-- Simulated checkout that records a paid status and moves the table to Cleaning.
+- Simulated checkout that records a paid status, moves the table to Cleaning, and offers a printable guest bill.
 - Kitchen queue with new → preparing → ready → served ticket transitions.
 - Ticket cancellation for new or preparing orders, with a saved reason and table cleanup.
-- Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal bill splits for 2–8 guests with individual payment methods.
+- Checkout with 0%, 5%, 10%, or 15% discounts, Cash/Card/UPI selection, and equal or item-assigned bill splits for 2–8 guests with individual payment methods.
 - Persisted transaction history with each payment method and amount.
-- Floor management for changing table states, transferring open orders, and merging/unmerging table pairs.
+- Floor management for changing table states, transferring open orders, and merging/unmerging table pairs. Drag-and-drop or keyboard movement changes the persisted floor plan layout.
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Menu availability toggles that immediately disable sold-out items in ordering.
 - Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, and availability.
 - Service report view with date filters, live order counts, transaction history, CSV export, and a printable payment closeout summary.
 - Demo staff roles for Manager, Cashier, Waiter, and Kitchen with role-specific navigation and checkout controls.
+- Persistent dark/light appearance preference and responsive layouts.
 - Local IndexedDB persistence for orders and table state across refreshes and browser restarts.
 
 ## Architecture and state
@@ -44,12 +46,12 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
 - Completing checkout marks the order Paid and moves its table to Cleaning.
 - Reservations require a guest name, future arrival time, and party size within the table’s seating capacity.
-- Takeaway orders have no table assignment.
+- Takeaway and delivery orders have no table assignment. Delivery orders require a recipient name, valid phone number, and a complete address.
 
 ## Assumptions and limitations
 
-- Dashboard sales, order, occupancy, and ticket-time metrics are calculated from this device’s records. The sales pulse chart remains illustrative sample data.
-- Payment is simulated. Role selection is a client-side demo aid and does not provide authentication or server-enforced permissions. Bill splitting is equal by guest; item-based splitting is not implemented. Table state changes, order transfer, and table pair merging are available in the floor management view.
+- Dashboard sales, order, occupancy, and ticket-time metrics are calculated from this device’s records. The service report sales chart groups recorded payment transactions by time interval.
+- Payment is simulated. Role selection is a client-side demo aid and does not provide authentication or server-enforced permissions. Item-based splitting assigns each order line to one guest; quantities on the same line stay together. Table state changes, order transfer, and table pair merging are available in the floor management view.
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - IndexedDB availability is required for durable persistence.
-- The current visual theme is light mode; dark mode and automated workflow tests remain to be implemented.
+- A persistent dark/light theme toggle is available. Automated workflow tests remain to be implemented.

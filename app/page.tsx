@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { initialData, loadPosData, menu, savePosData, type Category, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
+import { initialData, loadPosData, menu, savePosData, type Category, type DeliveryDetails, type MenuItem, type MenuModifier, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 type StaffRole = "Manager" | "Cashier" | "Waiter" | "Kitchen";
+type Theme = "light" | "dark";
 const navigationItems: { view: string; label: string; icon: string }[] = [
   { view: "New order", label: "New order", icon: "▦" },
   { view: "Floor plan", label: "Floor plan", icon: "⌑" },
@@ -33,6 +34,20 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
 const lineUnitPrice = (line: OrderLine, items: MenuItem[] = menu) => (itemById(line.menuItemId, items)?.price ?? 0) + (line.modifiers ?? []).reduce((sum, modifier) => sum + modifier.price, 0);
 const dateTimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const formatReservationTime = (date: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(new Date(date));
+const defaultFloorPosition = (index: number) => index < 4
+  ? { column: index + 1, row: 1 }
+  : index < 7
+    ? { column: index - 2, row: 2 }
+    : { column: (index - 7) % 4 + 1, row: 3 + Math.floor((index - 7) / 4) };
+const allocateCents = (total: number, weights: number[]) => {
+  const cents = Math.round(total * 100);
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!weightTotal) return weights.map(() => 0);
+  const raw = weights.map((weight) => cents * weight / weightTotal);
+  const allocated = raw.map(Math.floor);
+  for (let remainder = cents - allocated.reduce((sum, amount) => sum + amount, 0), index = 0; remainder > 0; remainder--, index++) allocated[index % allocated.length]++;
+  return allocated.map((amount) => amount / 100);
+};
 
 export default function Home() {
   const [data, setData] = useState<PosData>(initialData);
@@ -42,6 +57,11 @@ export default function Home() {
   const [cart, setCart] = useState<OrderLine[]>([]);
   const [notice, setNotice] = useState("");
   const [view, setView] = useState("New order");
+  const [orderType, setOrderType] = useState<Order["type"]>("Dine in");
+  const [deliveryName, setDeliveryName] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [selectedServiceOrderId, setSelectedServiceOrderId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [checkoutOrderId, setCheckoutOrderId] = useState<string | null>(null);
   const [discountPercent, setDiscountPercent] = useState(0);
@@ -49,6 +69,8 @@ export default function Home() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("UPI");
   const [guestCount, setGuestCount] = useState(2);
   const [guestMethods, setGuestMethods] = useState<PaymentMethod[]>(["UPI", "Cash"]);
+  const [splitMode, setSplitMode] = useState<"equal" | "items">("equal");
+  const [itemGuests, setItemGuests] = useState<Record<number, number>>({});
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
   const [customQuantity, setCustomQuantity] = useState(1);
   const [customModifierIds, setCustomModifierIds] = useState<string[]>([]);
@@ -70,6 +92,9 @@ export default function Home() {
   const [menuEditorOpen, setMenuEditorOpen] = useState(false);
   const [role, setRole] = useState<StaffRole>("Manager");
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
+  const [themeLoaded, setThemeLoaded] = useState(false);
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
 
   useEffect(() => {
     loadPosData().then((saved) => { if (saved) setData({ ...initialData, ...saved, unavailableMenuIds: saved.unavailableMenuIds ?? [], transactions: saved.transactions ?? [], menuItems: saved.menuItems ?? menu }); }).catch(() => setNotice("Offline storage is unavailable; changes may not persist.")).finally(() => setLoaded(true));
@@ -79,6 +104,25 @@ export default function Home() {
     if (loaded) savePosData(data).catch(() => setNotice("Could not save changes to this device."));
   }, [data, loaded]);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      let savedTheme: Theme = "light";
+      try {
+        const stored = window.localStorage.getItem("dinein-theme");
+        if (stored === "dark" || stored === "light") savedTheme = stored;
+      } catch { /* Use light theme when storage is unavailable. */ }
+      document.documentElement.dataset.theme = savedTheme;
+      setTheme(savedTheme);
+      setThemeLoaded(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!themeLoaded) return;
+    document.documentElement.dataset.theme = theme;
+    try { window.localStorage.setItem("dinein-theme", theme); } catch { /* Theme preference remains in memory when storage is unavailable. */ }
+  }, [theme, themeLoaded]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 3200);
@@ -101,6 +145,7 @@ export default function Home() {
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
   const activeOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
+  const serviceOrders = activeOrders.filter((order) => order.type === orderType && order.type !== "Dine in");
   const serviceTables = data.tables.filter((table) => table.status !== "merged");
   const occupied = serviceTables.filter((table) => table.status === "occupied").length;
   const now = clockNow === null ? null : new Date(clockNow);
@@ -120,7 +165,7 @@ export default function Home() {
   const allowedViews = roleViews[role];
   const canTakePayment = role === "Manager" || role === "Cashier";
   const canManageMenu = role === "Manager";
-  const currentOrder = selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined;
+  const currentOrder = orderType === "Dine in" ? selectedTable ? activeOrders.find((order) => order.tableId === selectedTable) : undefined : serviceOrders.find((order) => order.id === selectedServiceOrderId) ?? serviceOrders[serviceOrders.length - 1];
   const checkoutOrder = data.orders.find((order) => order.id === checkoutOrderId && order.status !== "paid" && order.status !== "cancelled");
   const orderPendingCancellation = data.orders.find((order) => order.id === cancelOrderId && order.status !== "paid" && order.status !== "cancelled");
   const reservationTable = data.tables.find((table) => table.id === reservationTableId);
@@ -155,27 +200,48 @@ export default function Home() {
 
   function placeOrder() {
     if (cart.length === 0) return;
-    if (view === "New order" && !selectedTable) { setNotice("Choose a table before sending this dine-in order."); return; }
-    const order: Order = { id: `#${1051 + data.orders.length}`, tableId: view === "Takeaway" ? null : selectedTable, type: view === "Takeaway" ? "Takeaway" : "Dine in", status: "new", items: cart, createdAt: new Date().toISOString() };
+    if (orderType === "Dine in" && !selectedTable) { setNotice("Choose a table before sending this dine-in order."); return; }
+    let deliveryDetails: DeliveryDetails | undefined;
+    if (orderType === "Delivery") {
+      const normalizedPhone = deliveryPhone.replace(/[\s()-]/g, "");
+      if (deliveryName.trim().length < 2) { setNotice("Enter the delivery recipient's name."); return; }
+      if (!/^\+?\d{10,15}$/.test(normalizedPhone)) { setNotice("Enter a valid delivery phone number."); return; }
+      if (deliveryAddress.trim().length < 8) { setNotice("Enter a complete delivery address."); return; }
+      deliveryDetails = { recipientName: deliveryName.trim(), phone: normalizedPhone, address: deliveryAddress.trim() };
+    }
+    const orderId = `#${1051 + data.orders.length}`;
+    const order: Order = { id: orderId, tableId: orderType === "Dine in" ? selectedTable : null, type: orderType, deliveryDetails, status: "new", items: cart, createdAt: new Date().toISOString() };
     setData((previous) => ({
       ...previous,
       orders: [...previous.orders, order],
       tables: order.tableId ? previous.tables.map((table) => table.id === order.tableId ? { ...table, status: "occupied", guests: table.guests ?? 2 } : table) : previous.tables,
     }));
     setCart([]);
+    if (orderType !== "Dine in") setSelectedServiceOrderId(order.id);
     setNotice(`${order.id} sent to the kitchen`);
+  }
+
+  function printBill() {
+    const clearPrintTarget = () => { delete document.documentElement.dataset.printTarget; };
+    document.documentElement.dataset.printTarget = "bill";
+    window.addEventListener("afterprint", clearPrintTarget, { once: true });
+    window.setTimeout(clearPrintTarget, 15000);
+    window.print();
   }
 
   function completePayment() {
     if (!checkoutOrder) return;
     const order = checkoutOrder;
     const createdAt = new Date().toISOString();
-    const totalPaise = Math.round(checkoutTotal * 100);
-    const sharePaise = splitPayment ? Math.floor(totalPaise / guestCount) : totalPaise;
-    const remainderPaise = splitPayment ? totalPaise % guestCount : 0;
+    const itemWeights = Array.from({ length: guestCount }, (_, guestIndex) => order.items.reduce((sum, line, lineIndex) => (itemGuests[lineIndex] ?? 0) === guestIndex ? sum + lineUnitPrice(line, menuItems) * line.quantity : sum, 0));
+    if (splitPayment && splitMode === "items" && itemWeights.some((weight) => weight === 0)) {
+      setNotice("Assign at least one order line to every guest before checkout.");
+      return;
+    }
+    const amounts = splitPayment ? splitMode === "items" ? allocateCents(checkoutTotal, itemWeights) : allocateCents(checkoutTotal, Array.from({ length: guestCount }, () => 1)) : [checkoutTotal];
     const methods = Array.from({ length: splitPayment ? guestCount : 1 }, (_, index) => ({
       method: splitPayment ? guestMethods[index] ?? paymentMethod : paymentMethod,
-      amount: (sharePaise + (index < remainderPaise ? 1 : 0)) / 100,
+      amount: amounts[index] ?? 0,
       splitLabel: splitPayment ? `Guest ${index + 1}` : undefined,
     }));
     const payments = methods.map((payment, index) => ({ id: `${order.id}-${createdAt}-${index}`, orderId: order.id, amount: payment.amount, method: payment.method, createdAt, splitLabel: payment.splitLabel }));
@@ -327,9 +393,22 @@ export default function Home() {
     setData((previous) => {
       const nextNumber = previous.tables.reduce((largest, table) => Math.max(largest, Number(table.name) || 0), 0) + 1;
       const name = String(nextNumber).padStart(2, "0");
-      return { ...previous, tables: [...previous.tables, { id: `t${nextNumber}`, name, seats: 4, status: "available" }] };
+      return { ...previous, tables: [...previous.tables, { id: `t${nextNumber}`, name, seats: 4, status: "available", floorPosition: defaultFloorPosition(previous.tables.length) }] };
     });
     setNotice("A new 4-seat table was added to the floor.");
+  }
+
+  function moveFloorTable(tableId: string, deltaColumn: number, deltaRow: number) {
+    setData((previous) => {
+      const positioned = previous.tables.map((table, index) => ({ ...table, floorPosition: table.floorPosition ?? defaultFloorPosition(index) }));
+      const source = positioned.find((table) => table.id === tableId);
+      if (!source || source.status === "merged") return previous;
+      const from = source.floorPosition!;
+      const to = { column: Math.max(1, Math.min(4, from.column + deltaColumn)), row: Math.max(1, Math.min(6, from.row + deltaRow)) };
+      if (to.column === from.column && to.row === from.row) return previous;
+      const occupant = positioned.find((table) => table.id !== tableId && table.floorPosition?.column === to.column && table.floorPosition?.row === to.row);
+      return { ...previous, tables: positioned.map((table) => table.id === tableId ? { ...table, floorPosition: to } : table.id === occupant?.id ? { ...table, floorPosition: from } : table) };
+    });
   }
 
   function changeRole(nextRole: StaffRole) {
@@ -367,13 +446,13 @@ export default function Home() {
       <main className="main-area">
         <header className="topbar">
           <div className="breadcrumb">Workspace <span>/</span> <b>{view}</b></div>
-          <div className="top-actions"><span className="open-status"><i /> POS ready</span><span className="top-divider" /><span className="date-label">{dateLabel}</span><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
+          <div className="top-actions"><span className="open-status"><i /> POS ready</span><span className="top-divider" /><span className="date-label">{dateLabel}</span><button className="icon-button theme-toggle" aria-pressed={theme === "dark"} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}>{theme === "dark" ? "\u263c" : "\u263e"}</button><button className="icon-button" aria-label="Notifications" onClick={() => setNotice("You’re all caught up.")}>♧<i className="notification-dot" /></button><span className="avatar top-avatar">AM</span></div>
         </header>
 
         <section className="page-content">
           <div className="welcome-row"><div><div className="eyebrow">{servicePeriod} SERVICE <span>·</span> LOCAL</div><h1>{view === "Floor plan" ? "Your floor, at a glance." : view === "Kitchen" ? "Kitchen display" : view === "Reports" ? "Service overview" : view === "Menu" ? "Explore the menu." : greeting + ", Sanjana"}</h1><p className="subtitle">{view === "New order" ? "Live service overview from this device." : "A live snapshot of your restaurant service."}</p></div><div className="welcome-actions">{allowedViews.includes("Reports") && <button className="secondary-button" onClick={() => setView("Reports")}>◷ <span>Shift summary</span></button>}{role !== "Kitchen" && <button className="primary-button" onClick={() => { setView("New order"); setCart([]); }}>＋ <span>New order</span></button>}</div></div>
 
-          {view === "New order" || view === "Takeaway" ? <>
+          {view === "New order" ? <>
           <div className="metric-grid">
             <article className="metric-card"><div className="metric-top"><span>Today sales</span><span className="metric-icon sales-icon">₹</span></div><div className="metric-value metric-currency">{moneyRounded(todaySales)}</div><div className="metric-foot">{todayTransactions.length} payments recorded today</div></article>
             <article className="metric-card"><div className="metric-top"><span>Open orders</span><span className="metric-icon order-icon">☷</span></div><div className="metric-value">{activeOrders.length}<span className="metric-unit">orders</span></div><div className="metric-foot"><b className="green-text">{activeOrders.filter((order) => order.status === "preparing").length} preparing</b><span className="foot-sep">·</span>{activeOrders.filter((order) => order.status === "ready").length} ready</div></article>
@@ -381,7 +460,7 @@ export default function Home() {
             <article className="metric-card"><div className="metric-top"><span>Avg. ticket time</span><span className="metric-icon time-icon">◷</span></div><div className="metric-value">{averageTicketTime ?? "—"}{averageTicketTime !== null && <span className="metric-unit">min</span>}</div><div className="metric-foot">{completedDurations.length} completed tickets today</div></article>
           </div>
 
-          {view === "New order" || view === "Takeaway" ? <div className="workspace-heading"><div><h2>Start an order</h2><p>Choose a table, then add a few guest favorites.</p></div><button className="text-button" onClick={() => setView("Floor plan")}>View floor plan <span>↗</span></button></div> : null}
+          {view === "New order" ? <div className="workspace-heading"><div><h2>Start an order</h2><p>Choose a table, then add a few guest favorites.</p></div><button className="text-button" onClick={() => setView("Floor plan")}>View floor plan <span>↗</span></button></div> : null}
 
           <div className="work-grid">
             <section className="panel floor-panel">
@@ -396,7 +475,8 @@ export default function Home() {
                     const primaryTable = table.mergedInto ? data.tables.find((candidate) => candidate.id === table.mergedInto) : undefined;
                     const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
                     const selectionId = table.mergedInto ?? table.id;
-                    return <button key={table.id} onClick={() => { setSelectedTable(selectionId); setCart([]); setView("New order"); }} className={`table-node ${table.status} ${selectedTable === selectionId ? "selected" : ""} table-${index + 1}`} aria-label={`Table ${table.name}, ${table.status}${table.mergedInto ? ` joined with ${primaryTable?.name}` : ""}`}>
+                    const position = table.floorPosition ?? defaultFloorPosition(index);
+                    return <button key={table.id} onClick={() => { setSelectedTable(selectionId); setCart([]); setView("New order"); }} onKeyDown={(event) => { const delta = event.key === "ArrowLeft" ? [-1, 0] : event.key === "ArrowRight" ? [1, 0] : event.key === "ArrowUp" ? [0, -1] : event.key === "ArrowDown" ? [0, 1] : null; if (delta) { event.preventDefault(); moveFloorTable(table.id, delta[0], delta[1]); } }} draggable={table.status !== "merged"} onDragStart={(event) => { event.dataTransfer.setData("text/plain", table.id); setDraggingTableId(table.id); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const movingId = event.dataTransfer.getData("text/plain") || draggingTableId; const moving = data.tables.find((candidate) => candidate.id === movingId); const movingPosition = moving?.floorPosition ?? (moving ? defaultFloorPosition(data.tables.indexOf(moving)) : null); if (movingId && movingPosition && movingId !== table.id) moveFloorTable(movingId, position.column - movingPosition.column, position.row - movingPosition.row); setDraggingTableId(null); }} onDragEnd={() => setDraggingTableId(null)} style={{ gridColumn: position.column, gridRow: position.row }} title="Drag to arrange, or focus and use arrow keys" className={`table-node ${table.status} ${selectedTable === selectionId ? "selected" : ""} ${draggingTableId === table.id ? "is-dragging" : ""}`} aria-label={`Table ${table.name}, ${table.status}${table.mergedInto ? ` joined with ${primaryTable?.name}` : ""}. Drag to arrange or use arrow keys.`}>
                       <span className="table-top"><b>{table.name}</b><small>· {table.mergedInto ? table.seats : joinedSeats} seats</small></span><span className="table-state" title={table.reservation ? `Reserved for ${table.reservation.guestName}` : undefined}>{table.mergedInto ? `Joined · ${primaryTable?.name ?? "—"}` : table.status === "available" ? "Available" : table.status === "occupied" ? `${table.guests ?? joinedSeats} guests` : table.status === "reserved" ? table.reservation ? `Reserved · ${formatReservationTime(table.reservation.time)}` : "Reserved" : table.status}</span>{table.status === "occupied" && <span className="table-total">{money(totalAmount)}</span>}
                     </button>;
                   })}
@@ -421,9 +501,11 @@ export default function Home() {
             </section>
 
             <section className="panel ticket-panel">
-              <div className="ticket-heading"><div><span className="ticket-kicker">CURRENT TICKET</span><h3>{view === "Takeaway" ? "Takeaway" : selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Select a table"}</h3></div><button className="more-button" aria-label="Order options" onClick={() => setView(view === "Takeaway" ? "New order" : "Takeaway")}>···</button></div>
-              <div className="ticket-type"><button onClick={() => { setView("New order"); setSelectedTable("t2"); }}>⌑ &nbsp; Dine in <span className="chevron">⌄</span></button><button onClick={() => setView("Takeaway")} className={view === "Takeaway" ? "selected-type" : ""}>↗ &nbsp; Takeaway</button></div>
-              <div className="ticket-table-row"><span>Table</span><button onClick={() => setView("Floor plan")}>{selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Choose table"} <span>⌄</span></button></div>
+              <div className="ticket-heading"><div><span className="ticket-kicker">CURRENT TICKET</span><h3>{orderType === "Dine in" ? selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Select a table" : orderType}</h3></div><button className="more-button" aria-label="Cycle order type" onClick={() => { setOrderType((current) => current === "Dine in" ? "Takeaway" : current === "Takeaway" ? "Delivery" : "Dine in"); setCart([]); setSelectedServiceOrderId(null); }}>...</button></div>
+              <div className="ticket-type"><button className={orderType === "Dine in" ? "selected-type" : ""} onClick={() => { setOrderType("Dine in"); setCart([]); setSelectedServiceOrderId(null); }}>Dine in</button><button className={orderType === "Takeaway" ? "selected-type" : ""} onClick={() => { setOrderType("Takeaway"); setCart([]); setSelectedServiceOrderId(null); }}>Takeaway</button><button className={orderType === "Delivery" ? "selected-type" : ""} onClick={() => { setOrderType("Delivery"); setCart([]); setSelectedServiceOrderId(null); }}>Delivery</button></div>
+              {orderType === "Dine in" && <div className="ticket-table-row"><span>Table</span><button onClick={() => setView("Floor plan")}>{selectedTable ? `Table ${data.tables.find((table) => table.id === selectedTable)?.name}` : "Choose table"} <span>v</span></button></div>}
+              {orderType === "Delivery" && (currentOrder && cart.length === 0 ? <div className="delivery-summary"><b>{currentOrder.deliveryDetails?.recipientName ?? "Delivery recipient"}</b><span>{currentOrder.deliveryDetails?.phone}</span><small>{currentOrder.deliveryDetails?.address}</small></div> : <div className="delivery-fields"><label><span>Recipient name</span><input value={deliveryName} onChange={(event) => setDeliveryName(event.target.value)} maxLength={60} placeholder="Customer name" /></label><label><span>Phone</span><input type="tel" value={deliveryPhone} onChange={(event) => setDeliveryPhone(event.target.value)} maxLength={18} placeholder="10-digit phone number" /></label><label><span>Delivery address</span><textarea value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} maxLength={180} placeholder="Street, area, landmark" /></label></div>)}
+              {orderType !== "Dine in" && serviceOrders.length > 0 && <label className="service-order-select"><span>Open {orderType.toLowerCase()} order</span><select value={currentOrder?.id ?? ""} onChange={(event) => setSelectedServiceOrderId(event.target.value || null)}>{serviceOrders.map((order) => <option key={order.id} value={order.id}>{order.id} - {order.items.reduce((sum, line) => sum + line.quantity, 0)} items</option>)}</select></label>}
               <div className="order-list-heading"><span>ORDER ITEMS</span><span>{cart.reduce((sum, line) => sum + line.quantity, 0)} items</span></div>
               <div className="cart-lines">
                 {cart.length === 0 && currentOrder && <div className="existing-order"><span className="existing-order-top">{currentOrder.id} <b>{currentOrder.status}</b></span>{currentOrder.items.map((line) => { const item = itemById(line.menuItemId, menuItems); return <div className="cart-line" key={line.id ?? line.menuItemId}><div className="line-title"><span>{item?.name}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>{(line.modifiers?.length || line.note) && <small className="cart-extras">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}<div className="line-controls"><span>{money(lineUnitPrice(line, menuItems))} each</span><span className="quantity-controls"><button disabled aria-label="Decrease quantity">−</button><b>{line.quantity}</b><button disabled aria-label="Increase quantity">＋</button></span></div></div>; })}</div>}
@@ -437,7 +519,7 @@ export default function Home() {
             </section>
           </div>
 
-          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div>{allowedViews.includes("Reports") && <button onClick={() => setView("Reports")}>View all ↗</button>}</div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : "Takeaway"}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
+          <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div>{allowedViews.includes("Reports") && <button onClick={() => setView("Reports")}>View all ↗</button>}</div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : order.type}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Order tracking <span className="live-pill"><i /> LIVE</span></h3><p>Follow each ticket from kitchen to table.</p></div>{allowedViews.includes("Kitchen") && <button onClick={() => setView("Kitchen")}>Kitchen board</button>}</div><div className="tracking-list">{activeOrders.length === 0 ? <div className="tracking-empty">No active orders right now.</div> : activeOrders.slice(-3).reverse().map((order) => { const statusIndex = ["new", "preparing", "ready", "served"].indexOf(order.status); const steps = ["New", "Prep", "Ready", "Served"]; return <div className="tracking-order" key={order.id}><div className="tracking-order-meta"><b>{order.id}</b><span>{order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name ?? "--"}` : "Takeaway"}</span><small>{minutesAgo(order.createdAt)}</small></div><div className="tracking-steps" aria-label={`Order ${order.id} status: ${order.status}`}>{steps.map((step, index) => <span key={step} className={index < statusIndex ? "step-done" : index === statusIndex ? "step-current" : ""}><i />{step}</span>)}</div></div>; })}</div></section></div>
           </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} />}
         </section>
@@ -452,14 +534,15 @@ export default function Home() {
         <div className="customize-footer"><div className="quantity-controls customize-quantity"><button aria-label="Decrease item quantity" disabled={customQuantity <= 1} onClick={() => setCustomQuantity((quantity) => Math.max(1, quantity - 1))}>−</button><b>{customQuantity}</b><button aria-label="Increase item quantity" onClick={() => setCustomQuantity((quantity) => quantity + 1)}>＋</button></div><button className="send-button payment-submit" onClick={confirmCustomizedItem}><span>Add to ticket</span><b>{money((customizingItem.price + modifiersByCategory[customizingItem.category].filter((modifier) => customModifierIds.includes(modifier.id)).reduce((sum, modifier) => sum + modifier.price, 0)) * customQuantity)} <i>→</i></b></button></div>
       </section></div>}
       {orderPendingCancellation && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCancelOrderId(null); }}><section className="payment-dialog cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CANCEL TICKET · {orderPendingCancellation.id}</span><h2 id="cancel-title">Cancel this order?</h2><p>This removes the ticket from the kitchen queue. The reason will be kept in order history.</p></div><button className="payment-close" aria-label="Close cancellation" onClick={() => setCancelOrderId(null)}>×</button></div><label className="discount-row cancel-reason"><span>Reason</span><select value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}><option>Guest changed their mind</option><option>Duplicate order</option><option>Item unavailable</option><option>Long wait time</option><option>Entered by mistake</option></select></label><div className="cancel-dialog-actions"><button onClick={() => setCancelOrderId(null)}>Keep order</button><button onClick={() => cancelOrder(orderPendingCancellation.id, cancelReason)}>Cancel ticket</button></div></section></div>}
-      {checkoutOrder && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOrderId(null); }}><section className="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">PAYMENT · {checkoutOrder.id}</span><h2 id="payment-title">Complete checkout</h2><p>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : "Takeaway order"} · {checkoutOrder.items.reduce((sum, line) => sum + line.quantity, 0)} items</p></div><button className="payment-close" aria-label="Close checkout" onClick={() => setCheckoutOrderId(null)}>×</button></div>
+      {checkoutOrder && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOrderId(null); }}><section className="payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">PAYMENT · {checkoutOrder.id}</span><h2 id="payment-title">Complete checkout</h2><p>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : `${checkoutOrder.type} order`} · {checkoutOrder.items.reduce((sum, line) => sum + line.quantity, 0)} items</p></div><button className="payment-close" aria-label="Close checkout" onClick={() => setCheckoutOrderId(null)}>×</button></div>
+        <section className="invoice-print" aria-label="Printable guest bill"><header><span>DINE IN</span><h1>Guest bill</h1><p>Restaurant order summary</p></header><div className="invoice-meta"><span>Order <b>{checkoutOrder.id}</b></span><span>{new Date(checkoutOrder.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span><span>{checkoutOrder.tableId ? `Table ${data.tables.find((table) => table.id === checkoutOrder.tableId)?.name}` : checkoutOrder.type}</span>{checkoutOrder.deliveryDetails && <><span>{checkoutOrder.deliveryDetails.recipientName} | {checkoutOrder.deliveryDetails.phone}</span><span>{checkoutOrder.deliveryDetails.address}</span></>}</div><div className="invoice-lines">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId, menuItems); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} x {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small>{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` | ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>; })}</div><div className="invoice-totals"><div><span>Subtotal</span><b>{money(checkoutSubtotal)}</b></div>{discountPercent > 0 && <div><span>Discount ({discountPercent}%)</span><b>-{money(checkoutDiscount)}</b></div>}<div><span>Tax (8%)</span><b>{money(checkoutTax)}</b></div><div className="invoice-grand-total"><span>Amount due</span><b>{money(checkoutTotal)}</b></div></div><footer>Payment pending | Payment method: {splitPayment ? "Split payment" : paymentMethod}<br/>Payment is simulated in this demonstration.</footer></section>
         <div className="payment-summary">{checkoutOrder.items.map((line) => { const item = itemById(line.menuItemId, menuItems); return <div key={line.id ?? line.menuItemId}><span>{line.quantity} × {item?.name ?? "Menu item"}{(line.modifiers?.length || line.note) && <small className="payment-line-details">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span><b>{money(lineUnitPrice(line, menuItems) * line.quantity)}</b></div>; })}</div>
         <label className="discount-row"><span>Discount</span><select value={discountPercent} onChange={(event) => setDiscountPercent(Number(event.target.value))}><option value={0}>No discount</option><option value={5}>5% off</option><option value={10}>10% off</option><option value={15}>15% off</option></select></label>
         <div className="payment-totals"><div><span>Subtotal</span><b>{money(checkoutSubtotal)}</b></div>{discountPercent > 0 && <div><span>Discount ({discountPercent}%)</span><b className="discount-value">−{money(checkoutDiscount)}</b></div>}<div><span>Tax <small>(8% after discount)</small></span><b>{money(checkoutTax)}</b></div><div className="payment-total"><span>Amount due</span><b>{money(checkoutTotal)}</b></div></div>
         {!splitPayment && <><div className="payment-method-heading"><b>Payment method</b><span>SIMULATED PAYMENT</span></div><div className="payment-methods">{(["UPI", "Card", "Cash"] as const).map((method) => <button key={method} className={paymentMethod === method ? "method-selected" : ""} aria-pressed={paymentMethod === method} onClick={() => setPaymentMethod(method)}><span>{method === "UPI" ? "⌁" : method === "Card" ? "▣" : "₹"}</span>{method}</button>)}</div></>}
         <label className="split-payment-option"><input type="checkbox" checked={splitPayment} onChange={(event) => setSplitPayment(event.target.checked)} /><span><b>Split bill between guests</b><small>Divide equally; choose a method per guest</small></span><i /></label>
-        {splitPayment && <div className="split-methods"><label><span>Number of guests</span><select value={guestCount} onChange={(event) => { const count = Number(event.target.value); setGuestCount(count); setGuestMethods(Array.from({ length: count }, (_, index) => guestMethods[index] ?? paymentMethod)); }}>{Array.from({ length: 7 }, (_, index) => index + 2).map((count) => <option key={count} value={count}>{count} guests</option>)}</select></label>{Array.from({ length: guestCount }, (_, index) => <label key={index}><span>Guest {index + 1} - {money((Math.floor(Math.round(checkoutTotal * 100) / guestCount) + (index < Math.round(checkoutTotal * 100) % guestCount ? 1 : 0)) / 100)}</span><select value={guestMethods[index] ?? paymentMethod} onChange={(event) => setGuestMethods((previous) => previous.map((method, methodIndex) => methodIndex === index ? event.target.value as PaymentMethod : method))}><option>UPI</option><option>Card</option><option>Cash</option></select></label>)}</div>}
-        <button className="send-button payment-submit" onClick={completePayment}><span>Complete simulated payment</span><b>{money(checkoutTotal)} <i>→</i></b></button><p className="payment-note">No real payment will be taken.</p>
+        {splitPayment && <div className="split-methods"><label><span>Split style</span><select value={splitMode} onChange={(event) => setSplitMode(event.target.value as "equal" | "items")}><option value="equal">Equal shares</option><option value="items">Assign items to guests</option></select></label><label><span>Number of guests</span><select value={guestCount} onChange={(event) => { const count = Number(event.target.value); setGuestCount(count); setGuestMethods(Array.from({ length: count }, (_, index) => guestMethods[index] ?? paymentMethod)); }}>{Array.from({ length: 7 }, (_, index) => index + 2).map((count) => <option key={count} value={count}>{count} guests</option>)}</select></label>{splitMode === "items" && <div className="split-item-assignments">{checkoutOrder.items.map((line, lineIndex) => { const item = itemById(line.menuItemId, menuItems); return <label key={line.id ?? `${line.menuItemId}-${lineIndex}`}><span>{line.quantity} × {item?.name ?? "Menu item"}</span><select value={itemGuests[lineIndex] ?? 0} onChange={(event) => setItemGuests((previous) => ({ ...previous, [lineIndex]: Number(event.target.value) }))}>{Array.from({ length: guestCount }, (_, index) => <option key={index} value={index}>Guest {index + 1}</option>)}</select></label>; })}</div>}{Array.from({ length: guestCount }, (_, index) => { const equalAmounts = allocateCents(checkoutTotal, Array.from({ length: guestCount }, () => 1)); const itemAmounts = allocateCents(checkoutTotal, Array.from({ length: guestCount }, (_, guestIndex) => checkoutOrder.items.reduce((sum, line, lineIndex) => (itemGuests[lineIndex] ?? 0) === guestIndex ? sum + lineUnitPrice(line, menuItems) * line.quantity : sum, 0))); const amount = splitMode === "items" ? itemAmounts[index] : equalAmounts[index]; return <label key={index}><span>Guest {index + 1} - {money(amount)}</span><select value={guestMethods[index] ?? paymentMethod} onChange={(event) => setGuestMethods((previous) => previous.map((method, methodIndex) => methodIndex === index ? event.target.value as PaymentMethod : method))}><option>UPI</option><option>Card</option><option>Cash</option></select></label>; })}</div>}
+        <button className="secondary-button payment-print-button" onClick={printBill}>Print guest bill</button><button className="send-button payment-submit" onClick={completePayment}><span>Complete simulated payment</span><b>{money(checkoutTotal)} <i>→</i></b></button><p className="payment-note">No real payment will be taken.</p>
       </section></div>}
     </div>
   );
@@ -501,7 +584,7 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   const reportOrders = data.orders.filter((order) => withinRange(order.createdAt));
   const reportTransactions = (data.transactions ?? []).filter((transaction) => withinRange(transaction.createdAt));
   function exportTransactions() {
-    const rows = [["Date", "Order", "Table", "Payment method", "Split", "Amount (INR)"], ...reportTransactions.map((transaction) => [new Date(transaction.createdAt).toLocaleString("en-IN"), transaction.orderId, transaction.orderId ? tableLabel(data.orders.find((order) => order.id === transaction.orderId)?.tableId ?? null) : "Takeaway", transaction.method, transaction.splitLabel ?? "", transaction.amount.toFixed(2)])];
+    const rows = [["Date", "Order", "Table", "Payment method", "Split", "Amount (INR)"], ...reportTransactions.map((transaction) => [new Date(transaction.createdAt).toLocaleString("en-IN"), transaction.orderId, transaction.orderId ? (() => { const paidOrder = data.orders.find((order) => order.id === transaction.orderId); return paidOrder?.tableId ? tableLabel(paidOrder.tableId) : paidOrder?.type ?? "Unknown"; })() : "Unknown", transaction.method, transaction.splitLabel ?? "", transaction.amount.toFixed(2)])];
     const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll("\"", "\"\"")}"`).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
@@ -513,7 +596,7 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
 
   const chartBuckets = (() => {
     const specs = reportRange === "Today"
-      ? Array.from({ length: 6 }, (_, index) => ({ key: String(index + 10), label: ["10a", "12p", "2p", "4p", "6p", "8p"][index] }))
+      ? Array.from({ length: 7 }, (_, index) => ({ key: String(index + 10), label: ["10a", "12p", "2p", "4p", "6p", "8p", "10p"][index] }))
       : reportRange === "This week"
         ? Array.from({ length: 7 }, (_, index) => { const date = new Date(rangeStart ?? new Date(2000, 0, 2)); date.setDate(date.getDate() + index); return { key: String(date.getDay()), label: new Intl.DateTimeFormat("en-IN", { weekday: "short" }).format(date) }; })
         : Array.from({ length: 5 }, (_, index) => ({ key: String(index), label: `W${index + 1}` }));
@@ -529,7 +612,7 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   if (view === "Kitchen") return <div className="workflow-view">
     <div className="workflow-head"><div><h2>Live kitchen queue</h2><p>Move each ticket through prep as the team works.</p></div><span className="live-pill"><i /> LIVE</span></div>
     <div className="kitchen-board">{openOrders.length === 0 && <div className="workflow-empty">No open tickets. New orders will appear here.</div>}
-      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId, menuItems)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div><div className="kitchen-ticket-foot"><span>Received {minutesAgo(order.createdAt)}</span><span className="ticket-actions">{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}{(order.status === "new" || order.status === "preparing") && <button className="cancel-ticket" onClick={() => requestCancellation(order.id)}>Cancel</button>}</span></div></article>)}
+      {openOrders.map((order) => <article className="workflow-card kitchen-ticket" key={order.id}><div className="workflow-card-head"><div><span className="ticket-kicker">{tableLabel(order.tableId)} · {order.type.toUpperCase()}</span><h3>{order.id}</h3></div><span className={`status-pill status-${order.status}`}>{statusText[order.status]}</span></div><div className="kitchen-items">{order.items.map((line) => <div key={line.id ?? line.menuItemId}><b>{line.quantity}×</b><span>{itemById(line.menuItemId, menuItems)?.name ?? "Removed menu item"}{(line.modifiers?.length || line.note) && <small className="kitchen-item-note">{line.modifiers?.map((modifier) => modifier.label).join(", ")}{line.note ? ` · ${line.note}` : ""}</small>}</span></div>)}</div>{order.deliveryDetails && <div className="kitchen-delivery-details"><b>{order.deliveryDetails.recipientName}</b><span>{order.deliveryDetails.address}</span><small>{order.deliveryDetails.phone}</small></div>}<div className="kitchen-ticket-foot"><span className={(["new", "preparing"].includes(order.status) && clockNow !== null && clockNow - new Date(order.createdAt).getTime() >= 15 * 60000) ? "ticket-age is-delayed" : "ticket-age"}>Received {minutesAgo(order.createdAt)}{["new", "preparing"].includes(order.status) && clockNow !== null && clockNow - new Date(order.createdAt).getTime() >= 15 * 60000 ? " - Delayed" : ""}</span><span className="ticket-actions">{order.status === "new" && <button onClick={() => setOrderStatus(order.id, "preparing")}>Start preparing →</button>}{order.status === "preparing" && <button onClick={() => setOrderStatus(order.id, "ready")}>Mark ready →</button>}{order.status === "ready" && <button onClick={() => setOrderStatus(order.id, "served")}>Mark served →</button>}{order.status === "served" && <span className="served-label">Waiting for checkout</span>}{(order.status === "new" || order.status === "preparing") && <button className="cancel-ticket" onClick={() => requestCancellation(order.id)}>Cancel</button>}</span></div></article>)}
     </div>
   </div>;
 
