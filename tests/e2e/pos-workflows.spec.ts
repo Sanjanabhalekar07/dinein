@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function readSavedSnapshot(page: import("@playwright/test").Page) {
-  return page.evaluate(() => new Promise<{ menuItems: Array<{ name: string }>; transactions: unknown[] } | null>((resolve, reject) => {
+  return page.evaluate(() => new Promise<{ menuItems: Array<{ name: string }>; transactions: unknown[]; tables: Array<{ id: string; floorPosition?: { column: number; row: number } }> } | null>((resolve, reject) => {
     const request = indexedDB.open("dinein-pos", 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
@@ -196,15 +196,21 @@ test("open orders can transfer between tables and table pairs can be merged and 
 });
 
 test("POS workspace fits a narrow touchscreen viewport without page overflow", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
-  const dimensions = await page.evaluate(() => ({
-    viewport: document.documentElement.clientWidth,
-    content: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
-  await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+      overflow: Array.from(document.querySelectorAll("body *"))
+        .map((element) => ({ element: element.tagName.toLowerCase(), className: typeof element.className === "string" ? element.className : "", right: Math.round(element.getBoundingClientRect().right), parent: element.parentElement?.className ?? "" }))
+        .filter((entry) => entry.right > document.documentElement.clientWidth + 1)
+        .slice(0, 8),
+    }));
+    expect(dimensions.content, `unexpected horizontal overflow at ${width}px: ${JSON.stringify(dimensions.overflow)}`).toBeLessThanOrEqual(dimensions.viewport);
+    await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
+  }
 });
 
 test("cancelling a preparing ticket records its reason and removes it from kitchen work", async ({ page }) => {
@@ -251,4 +257,21 @@ test("POS workspace remains usable at tablet touch widths", async ({ page }) => 
     expect(dimensions.content, `unexpected horizontal overflow at ${width}px: ${JSON.stringify(dimensions.overflow)}`).toBeLessThanOrEqual(dimensions.viewport);
     await expect(page.getByRole("button", { name: /Send to kitchen/ })).toBeVisible();
   }
+});
+
+test("staff can rearrange floor tables with arrow keys and keep the layout after reload", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  const tableOne = page.getByRole("button", { name: /^Table 01, occupied/ });
+  const tableTwo = page.getByRole("button", { name: /^Table 02, available/ });
+  await tableOne.focus();
+  await tableOne.press("ArrowRight");
+  await expect(tableOne).toHaveCSS("grid-column-start", "2");
+  await expect(tableTwo).toHaveCSS("grid-column-start", "1");
+  await expect.poll(async () => (await readSavedSnapshot(page))?.tables.find((table) => table.id === "t1")?.floorPosition?.column).toBe(2);
+
+  await page.reload();
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  await expect(page.getByRole("button", { name: /^Table 01, occupied/ })).toHaveCSS("grid-column-start", "2");
+  await expect(page.getByRole("button", { name: /^Table 02, available/ })).toHaveCSS("grid-column-start", "1");
 });
