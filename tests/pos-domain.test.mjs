@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allocateCents, calculateBill, lineTotal, lineUnitPrice, splitOrderLines } from "../.test-build/lib/pos-domain.js";
+import { allocateCents, calculateBill, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines } from "../.test-build/lib/pos-domain.js";
 
 test("line pricing includes selected variant and modifier prices", () => {
   const items = [{ id: "soup", name: "Soup", category: "Soups", description: "Soup", price: 150, emoji: "🥣", color: "peach" }];
@@ -12,6 +12,23 @@ test("line pricing includes selected variant and modifier prices", () => {
 test("bill discount is applied before tax", () => {
   assert.deepEqual(calculateBill(1000, 10), { subtotal: 1000, discount: 100, tax: 72, total: 972 });
   assert.deepEqual(calculateBill(1000), { subtotal: 1000, discount: 0, tax: 80, total: 1080 });
+});
+
+test("report periods include their local start boundary and exclude prior periods and future times", () => {
+  const now = new Date(2026, 10, 5, 15, 30);
+  const stamp = (year, month, day, hour = 0, minute = 0) => new Date(year, month, day, hour, minute).toISOString();
+
+  assert.equal(isWithinReportPeriod(stamp(2026, 10, 5), "Today", now), true);
+  assert.equal(isWithinReportPeriod(stamp(2026, 10, 4, 23, 59), "Today", now), false);
+  assert.equal(isWithinReportPeriod(stamp(2026, 10, 5, 15, 31), "Today", now), false);
+  assert.equal(isWithinReportPeriod("not a date", "Today", now), false);
+  assert.equal(isWithinReportPeriod(stamp(2026, 10, 1), "This week", now), true);
+  assert.equal(isWithinReportPeriod(stamp(2026, 9, 31, 23, 59), "This week", now), false);
+  assert.equal(isWithinReportPeriod(stamp(2026, 10, 1), "This month", now), true);
+  assert.equal(isWithinReportPeriod(stamp(2026, 9, 31, 23, 59), "This month", now), false);
+  assert.deepEqual(reportPeriodBounds("This week", now), {
+    start: new Date(2026, 10, 1), end: now,
+  });
 });
 
 test("payment allocation rounds to cents and reconciles to the total", () => {

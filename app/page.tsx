@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
-import { allocateCents, calculateBill, lineTotal, lineUnitPrice, splitOrderLines } from "@/lib/pos-domain";
+import { allocateCents, calculateBill, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 
 const categories: Category[] = ["All", "Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
@@ -684,20 +684,14 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
-  const [reportRange, setReportRange] = useState("Today");
+  const [reportRange, setReportRange] = useState<ReportPeriod>("Today");
   const openOrders = data.orders.filter((order) => order.status !== "paid" && order.status !== "cancelled");
   const lowStockItems = menuItems.filter((item) => item.stockCount !== undefined && item.stockCount > 0 && item.stockCount <= (item.lowStockThreshold ?? 5));
   const tableLabel = (tableId: string | null) => tableId ? `Table ${data.tables.find((table) => table.id === tableId)?.name ?? "—"}` : "Takeaway";
   const orderAmount = (order: Order) => order.items.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
   const minutesAgo = (date: string) => clockNow === null ? "—" : (() => { const minutes = Math.max(0, Math.floor((clockNow - new Date(date).getTime()) / 60000)); return minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`; })();
-  const rangeEnd = clockNow === null ? null : new Date(clockNow);
-  const rangeStart = rangeEnd ? new Date(rangeEnd) : null;
-  if (rangeStart) {
-    rangeStart.setHours(0, 0, 0, 0);
-    if (reportRange === "This week") rangeStart.setDate(rangeStart.getDate() - rangeStart.getDay());
-    if (reportRange === "This month") rangeStart.setDate(1);
-  }
-  const withinRange = (createdAt: string) => rangeStart !== null && rangeEnd !== null && new Date(createdAt) >= rangeStart && new Date(createdAt) <= rangeEnd;
+  const rangeStart = clockNow === null ? null : reportPeriodBounds(reportRange, new Date(clockNow)).start;
+  const withinRange = (createdAt: string) => clockNow !== null && isWithinReportPeriod(createdAt, reportRange, new Date(clockNow));
   const reportOrders = data.orders.filter((order) => withinRange(order.createdAt));
   const reportTransactions = (data.transactions ?? []).filter((transaction) => withinRange(transaction.createdAt));
   function exportTransactions() {

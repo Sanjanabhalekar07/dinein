@@ -155,6 +155,14 @@ test("inventory decreases when a stocked dish is sent and increases after restoc
   await itemCard.getByLabel("Received quantity for Limited batch tart").fill("3");
   await itemCard.getByRole("button", { name: "Add stock" }).click();
   await expect(itemCard.locator(".stock-badge")).toHaveText("4 in stock");
+
+  await navigation.getByRole("button", { name: /Kitchen display/ }).click();
+  const stockedTicket = page.getByRole("article").filter({ has: page.getByText("Limited batch tart") });
+  await stockedTicket.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Cancel ticket" }).click();
+  await navigation.getByRole("button", { name: /Menu/ }).click();
+  await expect(itemCard.locator(".stock-badge")).toHaveText("5 in stock");
+  await expect(page.getByText("Order cancelled", { exact: false }).first()).toBeVisible();
 });
 
 test("open orders can transfer between tables and table pairs can be merged and unmerged", async ({ page }) => {

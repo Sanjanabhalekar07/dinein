@@ -1,6 +1,22 @@
 import type { MenuItem, Order, OrderLine } from "./pos-data";
 
 export type BillBreakdown = { subtotal: number; discount: number; tax: number; total: number };
+export type ReportPeriod = "Today" | "This week" | "This month";
+
+export function reportPeriodBounds(period: ReportPeriod, now: Date) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (period === "This week") start.setDate(start.getDate() - start.getDay());
+  if (period === "This month") start.setDate(1);
+  return { start, end: new Date(now) };
+}
+
+export function isWithinReportPeriod(timestamp: string, period: ReportPeriod, now: Date) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return false;
+  const { start, end } = reportPeriodBounds(period, now);
+  return date >= start && date <= end;
+}
 
 export function lineUnitPrice(line: OrderLine, menuItems: MenuItem[]) {
   const basePrice = line.variant?.price ?? menuItems.find((item) => item.id === line.menuItemId)?.price ?? 0;
