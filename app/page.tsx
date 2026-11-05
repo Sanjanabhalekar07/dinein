@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
@@ -103,6 +103,7 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const dialogReturnFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,6 +206,42 @@ export default function Home() {
   const checkoutDiscount = checkoutBill.discount;
   const checkoutTax = checkoutBill.tax;
   const checkoutTotal = checkoutBill.total;
+  const dialogOpen = Boolean(menuEditorOpen || reservationTableId || customizingItem || splitOrder || orderPendingCancellation || checkoutOrder);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const active = document.activeElement;
+    dialogReturnFocus.current = active instanceof HTMLElement ? active : null;
+    const focusableSelector = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusInitial = () => {
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      const target = dialog?.querySelector<HTMLElement>("[autofocus]") ?? dialog?.querySelector<HTMLElement>(focusableSelector) ?? dialog;
+      target?.focus();
+    };
+    const frame = window.requestAnimationFrame(focusInitial);
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      if (!dialog) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dialog.querySelector<HTMLButtonElement>(".payment-close")?.click();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) { event.preventDefault(); dialog.focus(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleDialogKeys);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleDialogKeys);
+      if (dialogReturnFocus.current?.isConnected) dialogReturnFocus.current.focus();
+    };
+  }, [dialogOpen]);
 
   function splitOpenOrder() {
     if (!splitOrder) return;

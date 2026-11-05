@@ -26,8 +26,21 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
   await page.getByRole("button", { name: /Send to kitchen/ }).click();
 
   await expect(page.getByRole("status")).toContainText("sent to the kitchen");
-  await page.getByRole("button", { name: /Go to checkout/ }).click();
+  const checkoutTrigger = page.getByRole("button", { name: /Go to checkout/ });
+  await checkoutTrigger.click();
   await expect(page.getByRole("dialog", { name: "Complete checkout" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close checkout" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Complete checkout" })).toHaveCount(0);
+  await expect(checkoutTrigger).toBeFocused();
+  await checkoutTrigger.click();
+  await expect(page.getByRole("dialog", { name: "Complete checkout" })).toBeVisible();
+  const closeCheckout = page.getByRole("button", { name: "Close checkout" });
+  await closeCheckout.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: /Complete simulated payment/ })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeCheckout).toBeFocused();
   await page.getByRole("button", { name: /Complete simulated payment/ }).click();
   await expect(page.getByRole("status")).toContainText("paid");
 
