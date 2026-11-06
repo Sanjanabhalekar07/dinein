@@ -182,6 +182,16 @@ export default function Home() {
   const occupied = serviceTables.filter((table) => table.status === "occupied").length;
   const now = clockNow === null ? null : new Date(clockNow);
   const todayTransactions = now ? (data.transactions ?? []).filter((transaction) => new Date(transaction.createdAt).toDateString() === now.toDateString()) : [];
+  const weekSales = now ? Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + index);
+    const transactions = (data.transactions ?? []).filter((transaction) => {
+      const paidAt = new Date(transaction.createdAt);
+      return paidAt.getFullYear() === date.getFullYear() && paidAt.getMonth() === date.getMonth() && paidAt.getDate() === date.getDate();
+    });
+    return { label: new Intl.DateTimeFormat("en-IN", { weekday: "short" }).format(date), date: new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(date), amount: transactions.reduce((sum, transaction) => sum + transaction.amount, 0), payments: transactions.length };
+  }) : [];
+  const weekSalesTotal = weekSales.reduce((sum, day) => sum + day.amount, 0);
+  const weekSalesPeak = Math.max(...weekSales.map((day) => day.amount), 1);
   const paidToday = new Set(todayTransactions.map((transaction) => transaction.orderId));
   const todaySales = todayTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
   const completedDurations = [...paidToday].map((orderId) => {
@@ -624,6 +634,8 @@ export default function Home() {
             <article className="metric-card"><div className="metric-top"><span>Tables occupied</span><span className="metric-icon table-icon">⌑</span></div><div className="metric-value">{occupied}<span className="metric-unit">/ {serviceTables.length} tables</span></div><div className="metric-foot">{serviceTables.length - occupied} available · {Math.round((occupied / Math.max(1, serviceTables.length)) * 100)}% capacity</div><div className="metric-progress occupancy"><i style={{ width: `${Math.min(100, (occupied / Math.max(1, serviceTables.length)) * 100)}%` }} /></div></article>
             <article className="metric-card"><div className="metric-top"><span>Avg. ticket time</span><span className="metric-icon time-icon">◷</span></div><div className="metric-value">{averageTicketTime ?? "—"}{averageTicketTime !== null && <span className="metric-unit">min</span>}</div><div className="metric-foot">{completedDurations.length} completed tickets today</div></article>
           </div>
+
+          <section className="panel dashboard-sales-panel" aria-labelledby="dashboard-sales-title"><div className="report-chart-head"><div><span>PAID TRANSACTIONS</span><b id="dashboard-sales-title">Sales over the last 7 days</b></div><div className="dashboard-sales-total"><strong>{money(weekSalesTotal)}</strong><small>{weekSales.reduce((sum, day) => sum + day.payments, 0)} payments</small></div></div>{weekSalesTotal === 0 ? <div className="dashboard-chart-empty">Recorded payments will appear here as sales come in.</div> : <div className="dashboard-chart-area" role="img" aria-label={`Sales over the last seven days, ${money(weekSalesTotal)} total`}>{weekSales.map((day) => <div className="dashboard-sales-day" key={day.date}><div className="dashboard-sales-track" title={`${day.date}: ${money(day.amount)}`}><i style={{ height: `${day.amount > 0 ? Math.max(6, day.amount / weekSalesPeak * 100) : 0}%` }} /></div><span>{day.label}</span><small>{day.date}</small></div>)}</div>}</section>
 
           {view === "New order" ? <div className="workspace-heading"><div><h2>Start an order</h2><p>Choose a table, then add a few guest favorites.</p></div><button className="text-button" onClick={() => setView("Floor plan")}>View floor plan <span>↗</span></button></div> : null}
 
