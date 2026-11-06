@@ -132,6 +132,45 @@ test("menu changes persist across reloads", async ({ page }) => {
   await expect(page.getByText("Playwright test dish", { exact: true })).toBeVisible();
 });
 
+test("managers can add, rename, and delete menu categories safely", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Menu/ }).click();
+  await page.getByRole("button", { name: "Add category" }).click();
+  await page.getByLabel("Category name").fill("Seasonal");
+  await page.getByRole("button", { name: "Add category", exact: true }).last().click();
+  await expect(page.getByRole("status")).toContainText("Seasonal category added");
+  await navigation.getByRole("button", { name: /New order/ }).click();
+  await expect(page.getByRole("tab", { name: "Seasonal" })).toBeVisible();
+  await navigation.getByRole("button", { name: /Menu/ }).click();
+
+  await page.getByRole("button", { name: /Add menu item/ }).click();
+  await page.getByLabel("Item name").fill("Seasonal test dish");
+  await page.getByLabel("Description").fill("A temporary category test item");
+  await page.locator(".menu-editor-field").filter({ hasText: "Category" }).locator("select").selectOption("Seasonal");
+  await page.getByLabel("Base price (₹)").fill("250");
+  await page.getByRole("button", { name: "Add to menu" }).click();
+  await expect(page.getByRole("status")).toContainText("added to the menu");
+  const seasonalItem = page.locator(".availability-card").filter({ hasText: "Seasonal test dish" });
+  const seasonalRow = page.locator(".category-manager-row").filter({ hasText: "Seasonal" });
+  await expect(seasonalRow.getByRole("button", { name: "Delete category Seasonal" })).toBeDisabled();
+
+  await seasonalRow.getByRole("button", { name: "Rename category Seasonal" }).click();
+  await page.getByLabel("Category name").fill("Seasonal plates");
+  await page.getByRole("button", { name: "Save category" }).click();
+  await expect(page.getByRole("status")).toContainText("Category renamed to Seasonal plates");
+  const renamedRow = page.locator(".category-manager-row").filter({ hasText: "Seasonal plates" });
+  await expect(renamedRow).toContainText("1 dish");
+  await expect(page.getByText("SEASONAL PLATES", { exact: true })).toBeVisible();
+
+  await seasonalItem.getByRole("button", { name: "Edit" }).click();
+  await page.locator(".menu-editor-field").filter({ hasText: "Category" }).locator("select").selectOption("Starters");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(renamedRow).toContainText("0 dishes");
+  await renamedRow.getByRole("button", { name: "Delete category Seasonal plates" }).click();
+  await expect(page.locator(".category-manager-row").filter({ hasText: "Seasonal plates" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Seasonal plates category deleted");
+});
+
 test("kitchen staff can advance an order through ready and served", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
   await navigation.getByRole("button", { name: /Kitchen display/ }).click();
