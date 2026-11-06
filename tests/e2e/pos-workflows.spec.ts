@@ -6,8 +6,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function readSavedSnapshot(page: import("@playwright/test").Page) {
-  return page.evaluate(() => new Promise<{ menuItems: Array<{ name: string }>; transactions: unknown[]; tables: Array<{ id: string; floorPosition?: { column: number; row: number } }> } | null>((resolve, reject) => {
-    const request = indexedDB.open("dinein-pos", 1);
+  return page.evaluate(() => new Promise<{ menuItems: Array<{ name: string }>; transactions: unknown[]; tables: Array<{ id: string; name: string; seats: number; floorPosition?: { column: number; row: number } }> } | null>((resolve, reject) => {
+    const request = indexedDB.open("dinein-pos", 2);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
@@ -61,6 +61,10 @@ test("staff can customize, send, and pay a dine-in ticket", async ({ page }) => 
   await page.getByLabel("Report start date").fill(localYesterday);
   await page.getByLabel("Report end date").fill(localYesterday);
   await expect(page.getByText("#1054", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: /New order/ }).click();
+  await expect(page.locator(".dashboard-chart-area")).toHaveAttribute("aria-label", /₹550\.80 total/);
+  await expect(page.locator(".dashboard-sales-day")).toHaveCount(7);
 });
 
 test("custom report dates follow the browser's local calendar in a non-UTC timezone", async ({ browser }) => {
@@ -353,4 +357,79 @@ test("staff can rearrange floor tables with arrow keys and keep the layout after
   await navigation.getByRole("button", { name: /New order/ }).click();
   await expect(page.getByRole("button", { name: /^Table 01, occupied/ })).toHaveCSS("grid-column-start", "2");
   await expect(page.getByRole("button", { name: /^Table 02, available/ })).toHaveCSS("grid-column-start", "1");
+});
+
+test("menu categories can be navigated with arrow, Home, and End keys", async ({ page }) => {
+  const tabs = page.getByRole("tablist", { name: "Menu categories" });
+  const all = tabs.getByRole("tab", { name: "All" });
+  await expect(all).toHaveAttribute("tabindex", "0");
+  await all.focus();
+  await page.keyboard.press("ArrowRight");
+  const starters = tabs.getByRole("tab", { name: "Starters" });
+  await expect(starters).toHaveAttribute("aria-selected", "true");
+  await expect(starters).toBeFocused();
+  await page.keyboard.press("End");
+  const desserts = tabs.getByRole("tab", { name: "Desserts" });
+  await expect(desserts).toHaveAttribute("aria-selected", "true");
+  await expect(desserts).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(all).toHaveAttribute("aria-selected", "true");
+  await expect(all).toBeFocused();
+  await expect(tabs.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
+});
+
+test("staff can add a named table with a chosen capacity and persist it", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  await page.getByRole("button", { name: /Add table/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a dining table" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Table name").fill("01");
+  await dialog.getByRole("button", { name: "Add table" }).click();
+  await expect(page.getByRole("status")).toContainText("already in use");
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Table name").fill("Patio A");
+  await dialog.getByLabel("Seats").selectOption("6");
+  await dialog.getByRole("button", { name: "Add table" }).click();
+  await expect(page.getByRole("status")).toContainText("Table Patio A added with 6 seats");
+  await expect.poll(async () => (await readSavedSnapshot(page))?.tables.find((table) => table.name === "Patio A")?.seats).toBe(6);
+
+  await page.reload();
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  const table = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Table Patio A" }) });
+  await expect(table).toContainText("6 SEATS");
+});
+
+test("manager can download and restore a validated local POS backup", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  await page.getByRole("button", { name: /Add table/ }).click();
+  let dialog = page.getByRole("dialog", { name: "Add a dining table" });
+  await dialog.getByLabel("Table name").fill("Archive");
+  await dialog.getByLabel("Seats").selectOption("8");
+  await dialog.getByRole("button", { name: "Add table" }).click();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+
+  await navigation.getByRole("button", { name: /Reports/ }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download backup" }).click();
+  const download = await downloadPromise;
+  const backupPath = await download.path();
+
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  await page.getByRole("button", { name: /Add table/ }).click();
+  dialog = page.getByRole("dialog", { name: "Add a dining table" });
+  await dialog.getByLabel("Table name").fill("Temporary");
+  await dialog.getByRole("button", { name: "Add table" }).click();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+
+  await navigation.getByRole("button", { name: /Reports/ }).click();
+  page.once("dialog", (confirmation) => confirmation.accept());
+  await page.locator("#restore-pos-backup").setInputFiles(backupPath);
+  await expect(page.getByRole("status")).toContainText("restored");
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+
+  await navigation.getByRole("button", { name: /Floor plan/ }).click();
+  await expect(page.getByRole("heading", { name: "Table Archive" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Table Temporary" })).toHaveCount(0);
 });
