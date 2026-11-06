@@ -110,7 +110,7 @@ test("staff can split an open table ticket and select the new bill", async ({ pa
   await page.getByRole("button", { name: "Create separate ticket" }).click();
 
   await expect(page.getByLabel("Open table ticket")).toBeVisible();
-  await expect(page.getByLabel("Open table ticket")).toHaveValue("#1051");
+  await expect(page.getByLabel("Open table ticket")).toHaveValue("#1054");
   await expect(page.getByRole("button", { name: /Go to checkout/ })).toBeVisible();
 });
 

@@ -48,6 +48,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Menu prices are stored in Indian rupees and quantity is a positive integer.
 - Tax is currently simulated as 8% after any discount. Subtotal, discount, tax, and the amount due are each rounded consistently to the nearest paise before payment is recorded.
 - Split-payment amounts are allocated in whole paise using the largest-remainder method so shares add up exactly to the bill total.
+- New ticket numbers advance past the highest existing numeric ticket ID, including after restoring a backup with gaps.
 - Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
 - Completing checkout marks the order Paid and moves its table to Cleaning.
 - Reservations require a guest name, future arrival time, and party size within the table’s seating capacity.
@@ -60,4 +61,4 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 - Persistence is local to one browser profile and device. It does not synchronize between staff devices and does not provide server backups.
 - Managers can create portable JSON backups and restore them into another browser profile; restoring replaces the current local snapshot.
 - IndexedDB availability is required for durable persistence.
-- A persistent dark/light theme toggle is available. Reports support preset periods plus a custom inclusive range of up to 366 days. Mobile navigation, menu categories, service selectors, report controls, and floor-management actions use 44px touch targets. Automated coverage includes eight core billing, splitting, and report-window rule tests plus nineteen browser workflows, including paise rounding, backup restore, configurable table creation, category keyboard navigation, the dashboard sales chart, non-UTC report filtering, and phone touch-target sizing.
+- A persistent dark/light theme toggle is available. Reports support preset periods plus a custom inclusive range of up to 366 days. Mobile navigation, menu categories, service selectors, report controls, and floor-management actions use 44px touch targets. Automated coverage includes nine core billing, splitting, ticket-ID, and report-window rule tests plus nineteen browser workflows, including paise rounding, backup restore, configurable table creation, category keyboard navigation, the dashboard sales chart, non-UTC report filtering, and phone touch-target sizing.

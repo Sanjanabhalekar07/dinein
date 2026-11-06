@@ -47,6 +47,16 @@ export function lineTotal(lines: OrderLine[], menuItems: MenuItem[]) {
   return lines.reduce((sum, line) => sum + lineUnitPrice(line, menuItems) * line.quantity, 0);
 }
 
+export function nextOrderId(orders: Pick<Order, "id">[]) {
+  const existingIds = new Set(orders.map((order) => order.id));
+  let nextNumber = orders.reduce((largest, order) => {
+    const number = /^#(\d+)$/.exec(order.id)?.[1];
+    return Math.max(largest, number ? Number(number) : 0);
+  }, 1053) + 1;
+  while (existingIds.has(`#${nextNumber}`)) nextNumber++;
+  return `#${nextNumber}`;
+}
+
 export function calculateBill(subtotal: number, discountPercent = 0, taxRate = 0.08): BillBreakdown {
   const roundToPaise = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
   const roundedSubtotal = roundToPaise(subtotal);

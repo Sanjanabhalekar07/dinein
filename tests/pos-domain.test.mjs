@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines } from "../.test-build/lib/pos-domain.js";
+import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, nextOrderId, reportPeriodBounds, splitOrderLines } from "../.test-build/lib/pos-domain.js";
 
 test("line pricing includes selected variant and modifier prices", () => {
   const items = [{ id: "soup", name: "Soup", category: "Soups", description: "Soup", price: 150, emoji: "🥣", color: "peach" }];
@@ -17,6 +17,12 @@ test("bill discount is applied before tax", () => {
 test("bill components and recorded total round consistently to paise", () => {
   assert.deepEqual(calculateBill(101, 5), { subtotal: 101, discount: 5.05, tax: 7.68, total: 103.63 });
   assert.deepEqual(calculateBill(99.999), { subtotal: 100, discount: 0, tax: 8, total: 108 });
+});
+
+test("new ticket numbers follow the highest existing numeric ID without collisions", () => {
+  assert.equal(nextOrderId([{ id: "#1054" }, { id: "#1100" }, { id: "web-order" }]), "#1101");
+  assert.equal(nextOrderId([{ id: "#1051" }, { id: "#1053" }]), "#1054");
+  assert.equal(nextOrderId([]), "#1054");
 });
 
 test("report periods include their local start boundary and exclude prior periods and future times", () => {

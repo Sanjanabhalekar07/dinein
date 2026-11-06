@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
-import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
+import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, nextOrderId, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
 import { parsePosBackup } from "@/lib/pos-backup";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 import DashboardSalesChart from "@/components/dashboard-sales-chart";
@@ -254,8 +254,7 @@ export default function Home() {
     if (!selected.length) { setNotice("Choose at least one item to move to the new ticket."); return; }
     if (selected.length === splitOrder.items.length) { setNotice("Leave at least one item on the original ticket."); return; }
     const createdAt = new Date().toISOString();
-    const nextNumber = data.orders.reduce((largest, order) => Math.max(largest, Number(order.id.replace(/^#/, "")) || 0), 1050) + 1;
-    const newOrderId = `#${nextNumber}`;
+    const newOrderId = nextOrderId(data.orders);
     const result = splitOrderLines(splitOrder, splitLineKeys, newOrderId, createdAt);
     if (!result) return;
     setData((previous) => ({
@@ -313,7 +312,7 @@ export default function Home() {
       if (address.length < 8) { setNotice("Enter a complete delivery address."); return; }
       deliveryDetails = { recipientName, phone: normalizedPhone, address };
     }
-    const orderId = currentOrder?.id ?? `#${1051 + data.orders.length}`;
+    const orderId = currentOrder?.id ?? nextOrderId(data.orders);
     const firedAt = new Date().toISOString();
     const order: Order = { id: orderId, tableId: orderType === "Dine in" ? selectedTable : null, type: orderType, deliveryDetails: deliveryDetails ?? currentOrder?.deliveryDetails, status: "new", items: cart, rounds: [cart], lastFiredAt: firedAt, createdAt: firedAt };
     const saleMovements: InventoryMovement[] = Object.entries(requestedStock).flatMap(([menuItemId, quantity]) => {
