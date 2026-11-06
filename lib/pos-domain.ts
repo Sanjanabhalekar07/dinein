@@ -48,10 +48,12 @@ export function lineTotal(lines: OrderLine[], menuItems: MenuItem[]) {
 }
 
 export function calculateBill(subtotal: number, discountPercent = 0, taxRate = 0.08): BillBreakdown {
-  const discount = subtotal * discountPercent / 100;
-  const taxable = subtotal - discount;
-  const tax = taxable * taxRate;
-  return { subtotal, discount, tax, total: taxable + tax };
+  const roundToPaise = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+  const roundedSubtotal = roundToPaise(subtotal);
+  const discount = roundToPaise(roundedSubtotal * discountPercent / 100);
+  const taxable = roundedSubtotal - discount;
+  const tax = roundToPaise(taxable * taxRate);
+  return { subtotal: roundedSubtotal, discount, tax, total: roundToPaise(taxable + tax) };
 }
 
 export function allocateCents(total: number, weights: number[]) {

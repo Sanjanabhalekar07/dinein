@@ -45,7 +45,7 @@ The demo seeds the first visit with sample tables and orders. Existing browser d
 ## Business rules in this slice
 
 - Menu prices are stored in Indian rupees and quantity is a positive integer.
-- Tax is currently simulated as 8% after any discount.
+- Tax is currently simulated as 8% after any discount. Subtotal, discount, tax, and the amount due are each rounded consistently to the nearest paise before payment is recorded.
 - Split-payment amounts are allocated in whole paise using the largest-remainder method so shares add up exactly to the bill total.
 - Sending a dine-in ticket marks its table Occupied and creates a new kitchen order.
 - Completing checkout marks the order Paid and moves its table to Cleaning.
