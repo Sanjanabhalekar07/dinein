@@ -108,32 +108,45 @@ export const initialData: PosData = {
 
 const DB_NAME = "dinein-pos";
 const STORE = "workspace";
-export function loadPosData(): Promise<PosData | null> {
+const DB_VERSION = 2;
+
+function openPosDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onerror = () => reject(request.error);
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE);
+    };
+    request.onerror = () => reject(request.error ?? new Error("Could not open local POS storage."));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("Close other Dine In tabs to finish updating local storage."));
+    };
     request.onsuccess = () => {
       const db = request.result;
-      const get = db.transaction(STORE, "readonly").objectStore(STORE).get("pos");
-      get.onsuccess = () => { resolve(get.result ?? null); db.close(); };
-      get.onerror = () => { reject(get.error); db.close(); };
+      db.onversionchange = () => db.close();
+      if (blocked) db.close();
+      else resolve(db);
     };
   });
 }
 
+export function loadPosData(): Promise<PosData | null> {
+  return openPosDatabase().then((db) => new Promise((resolve, reject) => {
+      const fail = (error: DOMException | null) => { db.close(); reject(error ?? new Error("Could not read local POS data.")); };
+      const get = db.transaction(STORE, "readonly").objectStore(STORE).get("pos");
+      get.onsuccess = () => { resolve(get.result ?? null); db.close(); };
+      get.onerror = () => fail(get.error);
+    }));
+}
+
 export function savePosData(data: PosData): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
+  return openPosDatabase().then((db) => new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE, "readwrite");
       transaction.objectStore(STORE).put(data, "pos");
       transaction.oncomplete = () => { resolve(); db.close(); };
-      transaction.onerror = () => { reject(transaction.error); db.close(); };
-    };
-  });
+      transaction.onabort = () => { reject(transaction.error ?? new Error("Could not save local POS data.")); db.close(); };
+      transaction.onerror = () => { reject(transaction.error ?? new Error("Could not save local POS data.")); db.close(); };
+    }));
 }
 
