@@ -103,6 +103,9 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const [tableEditorOpen, setTableEditorOpen] = useState(false);
+  const [tableFormName, setTableFormName] = useState("");
+  const [tableFormSeats, setTableFormSeats] = useState("4");
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function Home() {
   const checkoutDiscount = checkoutBill.discount;
   const checkoutTax = checkoutBill.tax;
   const checkoutTotal = checkoutBill.total;
-  const dialogOpen = Boolean(menuEditorOpen || reservationTableId || customizingItem || splitOrder || orderPendingCancellation || checkoutOrder);
+  const dialogOpen = Boolean(menuEditorOpen || tableEditorOpen || reservationTableId || customizingItem || splitOrder || orderPendingCancellation || checkoutOrder);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -543,13 +546,25 @@ export default function Home() {
     setNotice(existing ? `${name} updated.` : `${name} added to the menu.`);
   }
 
+  function openTableEditor() {
+    const nextNumber = data.tables.reduce((largest, table) => Math.max(largest, Number(table.name) || 0), 0) + 1;
+    setTableFormName(String(nextNumber).padStart(2, "0"));
+    setTableFormSeats("4");
+    setTableEditorOpen(true);
+  }
+
   function addTable() {
+    const name = tableFormName.trim();
+    const seats = Number(tableFormSeats);
+    if (!name || name.length > 12) { setNotice("Enter a table name up to 12 characters."); return; }
+    if (data.tables.some((table) => table.name.toLowerCase() === name.toLowerCase())) { setNotice("That table name is already in use."); return; }
+    if (![2, 4, 6, 8, 10, 12].includes(seats)) { setNotice("Choose a valid table capacity."); return; }
     setData((previous) => {
-      const nextNumber = previous.tables.reduce((largest, table) => Math.max(largest, Number(table.name) || 0), 0) + 1;
-      const name = String(nextNumber).padStart(2, "0");
-      return { ...previous, tables: [...previous.tables, { id: `t${nextNumber}`, name, seats: 4, status: "available", floorPosition: defaultFloorPosition(previous.tables.length) }] };
+      const nextId = previous.tables.reduce((largest, table) => Math.max(largest, Number(table.id.replace(/^t/, "")) || 0), 0) + 1;
+      return { ...previous, tables: [...previous.tables, { id: `t${nextId}`, name, seats, status: "available", floorPosition: defaultFloorPosition(previous.tables.length) }] };
     });
-    setNotice("A new 4-seat table was added to the floor.");
+    setTableEditorOpen(false);
+    setNotice(`Table ${name} added with ${seats} seats.`);
   }
 
   function moveFloorTable(tableId: string, deltaColumn: number, deltaRow: number) {
@@ -633,7 +648,7 @@ export default function Home() {
                 </div>
                 <div className="floor-note">✦ &nbsp; PATIO</div><div className="host-stand">HOST</div>
               </div>
-              <div className="floor-footer"><span><b>{occupied}</b> tables in service</span><button onClick={addTable}>＋ Add table</button></div>
+              <div className="floor-footer"><span><b>{occupied}</b> tables in service</span><button onClick={openTableEditor}>＋ Add table</button></div>
             </section>
 
             <section className="panel menu-panel">
@@ -672,11 +687,12 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div>{allowedViews.includes("Reports") && <button onClick={() => setView("Reports")}>View all ↗</button>}</div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : order.type}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Order tracking <span className="live-pill"><i /> LIVE</span></h3><p>Follow each ticket from kitchen to table.</p></div>{allowedViews.includes("Kitchen") && <button onClick={() => setView("Kitchen")}>Kitchen board</button>}</div><div className="tracking-list">{activeOrders.length === 0 ? <div className="tracking-empty">No active orders right now.</div> : activeOrders.slice(-3).reverse().map((order) => { const statusIndex = ["new", "preparing", "ready", "served"].indexOf(order.status); const steps = ["New", "Prep", "Ready", "Served"]; return <div className="tracking-order" key={order.id}><div className="tracking-order-meta"><b>{order.id}</b><span>{order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name ?? "--"}` : "Takeaway"}</span><small>{minutesAgo(order.createdAt)}</small></div><div className="tracking-steps" aria-label={`Order ${order.id} status: ${order.status}`}>{steps.map((step, index) => <span key={step} className={index < statusIndex ? "step-done" : index === statusIndex ? "step-current" : ""}><i />{step}</span>)}</div></div>; })}</div></section></div>
-          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} restockMenuItem={restockMenuItem} />}
+          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} openTableEditor={openTableEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} restockMenuItem={restockMenuItem} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
       {notice && <div role="status" className="toast"><span>✓</span>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss notification">×</button></div>}
+      {tableEditorOpen && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setTableEditorOpen(false); }}><section className="payment-dialog table-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="table-editor-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">FLOOR MANAGEMENT</span><h2 id="table-editor-title">Add a dining table</h2><p>Choose a table label and guest capacity.</p></div><button className="payment-close" aria-label="Close table form" onClick={() => setTableEditorOpen(false)}>×</button></div><div className="menu-editor-row table-editor-row"><label className="menu-editor-field"><span>Table name</span><input autoFocus maxLength={12} value={tableFormName} onChange={(event) => setTableFormName(event.target.value)} placeholder="e.g. Patio 1" /></label><label className="menu-editor-field"><span>Seats</span><select value={tableFormSeats} onChange={(event) => setTableFormSeats(event.target.value)}>{[2, 4, 6, 8, 10, 12].map((seats) => <option key={seats} value={seats}>{seats} seats</option>)}</select></label></div><div className="menu-editor-actions"><button onClick={() => setTableEditorOpen(false)}>Cancel</button><button className="send-button" onClick={addTable}>Add table</button></div></section></div>}
       {menuEditorOpen && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuEditorOpen(false); }}><section className="payment-dialog menu-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="menu-editor-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">MENU MANAGER</span><h2 id="menu-editor-title">{menuEditorId ? "Edit menu item" : "Add a menu item"}</h2><p>Changes are saved to this device and appear in ordering.</p></div><button className="payment-close" aria-label="Close menu editor" onClick={() => setMenuEditorOpen(false)}>×</button></div><label className="menu-editor-field"><span>Item name</span><input maxLength={60} value={menuFormName} onChange={(event) => setMenuFormName(event.target.value)} placeholder="e.g. House special biryani"/></label><label className="menu-editor-field"><span>Description</span><textarea maxLength={120} value={menuFormDescription} onChange={(event) => setMenuFormDescription(event.target.value)} placeholder="Ingredients or a short description"/></label><div className="menu-editor-row"><label className="menu-editor-field"><span>Category</span><select value={menuFormCategory} onChange={(event) => setMenuFormCategory(event.target.value as MenuItem["category"])}>{categories.filter((entry) => entry !== "All").map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select></label><label className="menu-editor-field"><span>Base price (₹)</span><input type="number" min="1" step="1" value={menuFormPrice} onChange={(event) => setMenuFormPrice(event.target.value)} placeholder="350"/></label><label className="menu-editor-field icon-field"><span>Food icon</span><input maxLength={8} value={menuFormEmoji} onChange={(event) => setMenuFormEmoji(event.target.value)} aria-label="Food icon emoji"/></label></div><label className="menu-editor-field variant-editor-field"><span>Variants (optional, one per line: Name | Price in ₹)</span><textarea value={menuFormVariants} onChange={(event) => setMenuFormVariants(event.target.value)} placeholder={'Half | 240\nFull | 420'} /></label><label className="menu-editor-field variant-editor-field"><span>Add-ons &amp; modifiers (one per line: Name | Price in ₹; zero is allowed)</span><textarea value={menuFormModifiers} onChange={(event) => setMenuFormModifiers(event.target.value)} /></label><div className="menu-editor-row stock-editor-row"><label className="menu-editor-field"><span>Stock on hand (blank for untracked)</span><input type="number" min="0" step="1" value={menuFormStock} onChange={(event) => setMenuFormStock(event.target.value)} placeholder="e.g. 24"/></label><label className="menu-editor-field"><span>Low-stock alert at</span><input type="number" min="0" step="1" value={menuFormLowStockThreshold} onChange={(event) => setMenuFormLowStockThreshold(event.target.value)}/></label></div><label className="menu-availability-check"><input type="checkbox" checked={menuFormAvailable} onChange={(event) => setMenuFormAvailable(event.target.checked)}/><span>Available to order</span></label><div className="menu-editor-actions"><button onClick={() => setMenuEditorOpen(false)}>Cancel</button><button className="send-button" onClick={saveMenuItem}>{menuEditorId ? "Save changes" : "Add to menu"}</button></div></section></div>}
       {reservationTable && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setReservationTableId(null); }}><section className="payment-dialog reservation-dialog" role="dialog" aria-modal="true" aria-labelledby="reservation-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">TABLE {reservationTable.name} · RESERVATION</span><h2 id="reservation-title">{reservationTable.reservation ? "Edit reservation" : "Book this table"}</h2><p>Save the guest details and expected arrival time.</p></div><button className="payment-close" aria-label="Close reservation form" onClick={() => setReservationTableId(null)}>×</button></div><label className="reservation-field"><span>Guest name</span><input autoFocus required maxLength={60} value={reservationGuestName} onChange={(event) => setReservationGuestName(event.target.value)} placeholder="Name for the booking"/></label><div className="reservation-fields-row"><label className="reservation-field"><span>Party size</span><input type="number" min={1} max={reservationTable.seats + data.tables.filter((table) => table.mergedInto === reservationTable.id).reduce((sum, table) => sum + table.seats, 0)} value={reservationGuests} onChange={(event) => setReservationGuests(Number(event.target.value))}/></label><label className="reservation-field"><span>Arrival time</span><input type="datetime-local" required value={reservationTime} onChange={(event) => setReservationTime(event.target.value)}/></label></div><div className="reservation-form-actions">{reservationTable.reservation && <button className="remove-reservation" onClick={() => { setTableStatus(reservationTable.id, "available"); setReservationTableId(null); setNotice("Reservation cancelled."); }}>Cancel reservation</button>}<button className="send-button reservation-save" onClick={saveReservation}><span>Save reservation</span><b>Table {reservationTable.name} <i>→</i></b></button></div></section></div>}
       {customizingItem && <div className="payment-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCustomizingItem(null); }}><section className="payment-dialog item-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-item-title"><div className="payment-dialog-head"><div><span className="ticket-kicker">CUSTOMIZE ITEM</span><h2 id="custom-item-title">{customizingItem.name}</h2><p>{customizingItem.description}</p></div><button className="payment-close" aria-label="Close item options" onClick={() => setCustomizingItem(null)}>×</button></div>
@@ -712,6 +728,7 @@ type WorkflowProps = {
   setOrderStatus: (orderId: string, status: Order["status"]) => void;
   requestCancellation: (orderId: string) => void;
   openMenuEditor: (item?: MenuItem) => void;
+  openTableEditor: () => void;
   transferOrder: (orderId: string, tableId: string) => void;
   mergeTables: (primaryId: string, secondaryId: string) => void;
   unmergeTable: (secondaryId: string) => void;
@@ -719,7 +736,7 @@ type WorkflowProps = {
   restockMenuItem: (menuItemId: string, quantity: number) => void;
 };
 
-function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability, restockMenuItem }: WorkflowProps) {
+function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, openTableEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability, restockMenuItem }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
@@ -784,7 +801,7 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   </div>;
 
   if (view === "Floor plan") return <div className="workflow-view">
-    <div className="workflow-head"><div><h2>Table management</h2><p>Choose a table to update its state or move an open ticket.</p></div><button className="primary-button" onClick={() => setView("New order")}>＋ Start an order</button></div>
+    <div className="workflow-head"><div><h2>Table management</h2><p>Choose a table to update its state or move an open ticket.</p></div><div className="workflow-head-actions"><button className="secondary-button" onClick={openTableEditor}>＋ Add table</button><button className="primary-button" onClick={() => setView("New order")}>＋ Start an order</button></div></div>
     <div className="floor-manager-grid">{data.tables.map((table) => {
       const orders = openOrders.filter((order) => order.tableId === table.id);
       const joinedSeats = table.seats + data.tables.filter((candidate) => candidate.mergedInto === table.id).reduce((sum, candidate) => sum + candidate.seats, 0);
