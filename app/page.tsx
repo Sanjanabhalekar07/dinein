@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { initialData, menu, type Category, type DeliveryDetails, type InventoryMovement, type MenuItem, type MenuModifier, type MenuVariant, type Order, type OrderLine, type PaymentMethod, type PosData, type ReservationDetails, type Table } from "@/lib/pos-data";
 import { allocateCents, calculateBill, customReportPeriodBounds, isWithinCustomReportPeriod, isWithinReportPeriod, lineTotal, lineUnitPrice, reportPeriodBounds, splitOrderLines, type ReportPeriod } from "@/lib/pos-domain";
+import { parsePosBackup } from "@/lib/pos-backup";
 import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 import DashboardSalesChart from "@/components/dashboard-sales-chart";
 
@@ -339,6 +340,38 @@ export default function Home() {
     window.addEventListener("afterprint", clearPrintTarget, { once: true });
     window.setTimeout(clearPrintTarget, 15000);
     window.print();
+  }
+
+  function downloadBackup() {
+    const backup = { format: "dinein-pos-backup", version: 1, exportedAt: new Date().toISOString(), data };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `dinein-pos-backup-${dateForInput(new Date())}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice("Local POS backup downloaded.");
+  }
+
+  async function restoreBackup(file: File) {
+    if (file.size > 10 * 1024 * 1024) { setNotice("Backup file must be 10 MB or smaller."); return; }
+    try {
+      const backup = parsePosBackup(JSON.parse(await file.text()));
+      if (!backup) { setNotice("This file is not a valid Dine In backup."); return; }
+      if (!window.confirm("Restoring this backup replaces the POS data currently stored in this browser. Continue?")) return;
+      const restored: PosData = { ...initialData, ...backup.data, unavailableMenuIds: backup.data.unavailableMenuIds ?? [], transactions: backup.data.transactions ?? [], menuItems: backup.data.menuItems ?? menu, inventoryMovements: backup.data.inventoryMovements ?? [] };
+      setData(restored);
+      setSelectedTable(restored.tables.find((table) => !table.mergedInto && table.status === "available")?.id ?? restored.tables.find((table) => !table.mergedInto)?.id ?? null);
+      setSelectedTableOrderId(null);
+      setSelectedServiceOrderId(null);
+      setCart([]);
+      setStorageStatus("saving");
+      setNotice(`Backup from ${new Date(backup.exportedAt).toLocaleDateString("en-IN")} restored. Saving on this device…`);
+    } catch {
+      setNotice("Could not read this backup file. Choose a valid Dine In JSON backup.");
+    }
   }
 
   function completePayment() {
@@ -690,7 +723,7 @@ export default function Home() {
 
           <div className="bottom-row"><section className="panel activity-panel"><div className="bottom-heading"><div><h3>Recent activity</h3><p>A little recap of what’s happening.</p></div>{allowedViews.includes("Reports") && <button onClick={() => setView("Reports")}>View all ↗</button>}</div><div className="activity-list">{data.orders.slice(-3).reverse().map((order, index) => <div className="activity-item" key={order.id}><span className={`activity-symbol symbol-${index} ${order.status === "cancelled" ? "activity-cancelled" : ""}`}>{order.status === "cancelled" ? "×" : order.status === "paid" ? "✓" : order.status === "ready" ? "♨" : "＋"}</span><span className="activity-copy"><b>{order.id} · {order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name}` : order.type}</b><small>{order.items.reduce((sum, line) => sum + line.quantity, 0)} items · {order.status}{order.cancellationReason ? ` · ${order.cancellationReason}` : ""}</small></span><span className="activity-time">{minutesAgo(order.createdAt)}</span></div>)}</div></section>
             <section className="panel kitchen-panel"><div className="bottom-heading"><div><h3>Order tracking <span className="live-pill"><i /> LIVE</span></h3><p>Follow each ticket from kitchen to table.</p></div>{allowedViews.includes("Kitchen") && <button onClick={() => setView("Kitchen")}>Kitchen board</button>}</div><div className="tracking-list">{activeOrders.length === 0 ? <div className="tracking-empty">No active orders right now.</div> : activeOrders.slice(-3).reverse().map((order) => { const statusIndex = ["new", "preparing", "ready", "served"].indexOf(order.status); const steps = ["New", "Prep", "Ready", "Served"]; return <div className="tracking-order" key={order.id}><div className="tracking-order-meta"><b>{order.id}</b><span>{order.tableId ? `Table ${data.tables.find((table) => table.id === order.tableId)?.name ?? "--"}` : "Takeaway"}</span><small>{minutesAgo(order.createdAt)}</small></div><div className="tracking-steps" aria-label={`Order ${order.id} status: ${order.status}`}>{steps.map((step, index) => <span key={step} className={index < statusIndex ? "step-done" : index === statusIndex ? "step-current" : ""}><i />{step}</span>)}</div></div>; })}</div></section></div>
-          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} openTableEditor={openTableEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} restockMenuItem={restockMenuItem} />}
+          </> : <WorkflowPanel view={view} data={data} menuItems={menuItems} clockNow={clockNow} canBackup={role === "Manager" && storageReady} downloadBackup={downloadBackup} restoreBackup={restoreBackup} setView={setView} setTableStatus={setTableStatus} requestReservation={requestReservation} setOrderStatus={setOrderStatus} requestCancellation={requestCancellation} openMenuEditor={openMenuEditor} openTableEditor={openTableEditor} transferOrder={transferOrder} mergeTables={mergeTables} unmergeTable={unmergeTable} toggleMenuAvailability={toggleMenuAvailability} restockMenuItem={restockMenuItem} />}
         </section>
         <footer className="app-footer"><span>© 2026 Dine In</span><span>Made for good service <b>✳</b></span><div><button onClick={() => setNotice("Help center is coming soon.")}>Help center</button><i /> <button onClick={() => setNotice("All systems are operational.")}>System status <b className="system-dot" /></button></div></footer>
       </main>
@@ -725,6 +758,9 @@ type WorkflowProps = {
   data: PosData;
   menuItems: MenuItem[];
   clockNow: number | null;
+  canBackup: boolean;
+  downloadBackup: () => void;
+  restoreBackup: (file: File) => void;
   setView: (view: string) => void;
   setTableStatus: (tableId: string, status: Table["status"]) => void;
   requestReservation: (tableId: string) => void;
@@ -739,7 +775,7 @@ type WorkflowProps = {
   restockMenuItem: (menuItemId: string, quantity: number) => void;
 };
 
-function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, openTableEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability, restockMenuItem }: WorkflowProps) {
+function WorkflowPanel({ view, data, menuItems, clockNow, canBackup, downloadBackup, restoreBackup, setView, setTableStatus, requestReservation, setOrderStatus, requestCancellation, openMenuEditor, openTableEditor, transferOrder, mergeTables, unmergeTable, toggleMenuAvailability, restockMenuItem }: WorkflowProps) {
   const [transferTargets, setTransferTargets] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
@@ -836,7 +872,7 @@ function WorkflowPanel({ view, data, menuItems, clockNow, setView, setTableStatu
   </div>;
 
   return <div className="workflow-view">
-    <div className="workflow-head"><div><h2>Service reports</h2><p>Review the activity recorded on this device.</p></div><div className="report-actions"><button className="secondary-button" onClick={() => window.print()}>Print summary</button><button className="secondary-button" onClick={exportTransactions} disabled={reportTransactions.length === 0}>Export CSV</button><select aria-label="Report period" className="report-select" value={reportRange} onChange={(event) => setReportRange(event.target.value as ReportRange)}><option>Today</option><option>This week</option><option>This month</option><option value="Custom">Custom dates</option></select>{reportRange === "Custom" && <div className="report-custom-range"><label><span>From</span><input aria-label="Report start date" type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} /></label><label><span>To</span><input aria-label="Report end date" type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} /></label></div>}</div></div>
+    <div className="workflow-head"><div><h2>Service reports</h2><p>Review the activity recorded on this device.</p></div><div className="report-actions">{canBackup && <><button className="secondary-button" onClick={downloadBackup}>Download backup</button><button className="secondary-button" onClick={() => document.getElementById("restore-pos-backup")?.click()}>Restore backup</button><input id="restore-pos-backup" type="file" accept="application/json,.json" hidden aria-label="Choose a Dine In backup file" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) restoreBackup(file); }} /></>}<button className="secondary-button" onClick={() => window.print()}>Print summary</button><button className="secondary-button" onClick={exportTransactions} disabled={reportTransactions.length === 0}>Export CSV</button><select aria-label="Report period" className="report-select" value={reportRange} onChange={(event) => setReportRange(event.target.value as ReportRange)}><option>Today</option><option>This week</option><option>This month</option><option value="Custom">Custom dates</option></select>{reportRange === "Custom" && <div className="report-custom-range"><label><span>From</span><input aria-label="Report start date" type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} /></label><label><span>To</span><input aria-label="Report end date" type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} /></label></div>}</div></div>
     {customRangeInvalid && <p className="report-range-error" role="alert">Choose a valid date range no longer than 366 days.</p>}
     <div className="report-metrics"><article className="workflow-card report-metric"><span>ORDERS IN PERIOD</span><b>{reportOrders.length}</b><small>{completedInRange.size} completed / {openInRange} open</small></article><article className="workflow-card report-metric"><span>COMPLETED SALES</span><b>{money(collectedInRange)}</b><small>From recorded payments in this period</small></article><article className="workflow-card report-metric"><span>TABLE OCCUPANCY</span><b>{data.tables.filter((table) => table.status === "occupied").length} / {data.tables.length}</b><small>{data.tables.filter((table) => table.status === "available").length} available right now</small></article><article className="workflow-card report-chart"><div className="report-chart-head"><div><span>RECORDED SALES</span><b>{rangeLabel}</b></div><span className="green-text">{reportTransactions.length} payments in this period</span></div><div className="chart-area"><div className="chart-y"><span>{moneyRounded(chartPeak)}</span><span>{moneyRounded(chartPeak / 2)}</span><span>INR 0</span></div><div className="chart-plot"><div className="chart-grid-lines"><i/><i/><i/></div><div className="sales-bars" role="img" aria-label={`Recorded sales by ${rangeLabel.toLowerCase()} interval`}>{chartBuckets.map((bucket) => <div className="sales-bar-column" key={bucket.key} title={`${bucket.label}: ${money(bucket.amount)}`}><div className="sales-bar-track"><i style={{ height: `${Math.max(bucket.amount > 0 ? 5 : 0, bucket.amount / chartPeak * 100)}%` }}/></div><span>{bucket.label}</span></div>)}</div></div></div></article></div>
     <section className="workflow-card service-breakdown"><div className="transaction-history-head"><div><h3>Sales by service</h3><p>Collected payments grouped by order channel.</p></div><span>{reportRange}</span></div><div className="service-breakdown-grid">{serviceTotals.map(({ type, orders, amount }) => <article key={type}><span>{type.toUpperCase()}</span><b>{money(amount)}</b><small>{orders} paid {orders === 1 ? "order" : "orders"}</small></article>)}</div></section>
