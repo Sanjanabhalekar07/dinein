@@ -1,11 +1,12 @@
 export type TableStatus = "available" | "occupied" | "reserved" | "cleaning" | "merged";
 export type OrderStatus = "new" | "preparing" | "ready" | "served" | "paid" | "cancelled";
-export type Category = "All" | "Starters" | "Mains" | "Pizza" | "Soups" | "Breads & Sides" | "Drinks" | "Desserts";
+export type Category = string;
+export const defaultCategories: string[] = ["Starters", "Soups", "Mains", "Breads & Sides", "Pizza", "Drinks", "Desserts"];
 
 export type MenuItem = {
   id: string;
   name: string;
-  category: Exclude<Category, "All">;
+  category: string;
   description: string;
   price: number;
   emoji: string;
@@ -29,7 +30,7 @@ export type Order = { id: string; tableId: string | null; type: "Dine in" | "Tak
 export type PaymentMethod = "Cash" | "Card" | "UPI";
 export type PaymentTransaction = { id: string; orderId: string; amount: number; method: PaymentMethod; createdAt: string; splitLabel?: string };
 export type InventoryMovement = { id: string; menuItemId: string; itemName: string; quantity: number; reason: "restock" | "sale" | "cancellation"; orderId?: string; createdAt: string };
-export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[]; menuItems: MenuItem[]; inventoryMovements?: InventoryMovement[] };
+export type PosData = { tables: Table[]; orders: Order[]; unavailableMenuIds: string[]; transactions: PaymentTransaction[]; menuItems: MenuItem[]; categories?: string[]; inventoryMovements?: InventoryMovement[] };
 
 export const menu: MenuItem[] = [
   { id: "burrata", name: "Burrata & tomatoes", category: "Starters", description: "Heirloom tomato, basil oil, sourdough", price: 480, emoji: "\u{1F345}", color: "peach", popular: true },
@@ -89,6 +90,7 @@ export const menu: MenuItem[] = [
 ];
 
 export const initialData: PosData = {
+  categories: defaultCategories,
   unavailableMenuIds: [],
   transactions: [],
   menuItems: menu,

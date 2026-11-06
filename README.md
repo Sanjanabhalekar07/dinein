@@ -30,7 +30,7 @@ Open `http://localhost:3000`. Use `npm run lint` to run ESLint, `npm run test` f
 - Floor management for changing table states, transferring open orders, and merging/unmerging table pairs. Drag-and-drop or keyboard movement changes the persisted floor plan layout.
 - Table reservations with guest name, party size, and arrival time; staff can edit or cancel a booking.
 - Manual menu availability toggles plus optional per-item stock counts, low-stock warnings, quick restocking, and a recent inventory movement log for receipts, kitchen sends, and cancelled-order returns.
-- Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, availability, named price variants, add-on labels and prices, stock counts, and low-stock thresholds.
+- Menu manager for adding and editing item names, descriptions, categories, INR prices, icons, availability, named price variants, add-on labels and prices, stock counts, and low-stock thresholds. Categories can be added or renamed; categories containing dishes are protected from deletion.
 - Service report view with date filters, sales by payment method and service type, average check, cancellation and open-order counts, transaction history, CSV export, and a printable payment closeout summary.
 - Manager-only JSON backup and restore for moving or recovering the complete local POS snapshot, with format validation and a replacement confirmation.
 - Demo staff roles for Manager, Cashier, Waiter, and Kitchen with role-specific navigation and checkout controls.

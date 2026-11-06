@@ -62,6 +62,7 @@ function isInventoryMovement(value: unknown): value is InventoryMovement {
 
 function isPosData(value: unknown): value is PosData {
   if (!isRecord(value) || !Array.isArray(value.tables) || !value.tables.every(isTable) || !Array.isArray(value.orders) || !value.orders.every(isOrder) || !Array.isArray(value.menuItems) || !value.menuItems.every(isMenuItem) || !Array.isArray(value.unavailableMenuIds) || !value.unavailableMenuIds.every(isString) || !Array.isArray(value.transactions) || !value.transactions.every(isTransaction)) return false;
+  if (value.categories !== undefined && (!Array.isArray(value.categories) || !value.categories.every((category) => isString(category) && category.trim().length > 0 && category.length <= 30) || !isUniqueBy(value.categories as string[], (category) => category.toLowerCase()))) return false;
   if (value.inventoryMovements !== undefined && (!Array.isArray(value.inventoryMovements) || !value.inventoryMovements.every(isInventoryMovement))) return false;
   return isUniqueBy(value.tables, (table) => table.id) && isUniqueBy(value.menuItems, (item) => item.id) && isUniqueBy(value.orders, (order) => order.id) && isUniqueBy(value.transactions, (transaction) => transaction.id);
 }
