@@ -7075,3 +7075,34 @@ html[data-theme="dark"] .orders-delete-button:disabled {
 html[data-theme="dark"] .orders-empty h2 {
   color: #f2ecdd;
 }
+
+html[data-theme="light"] .role-menu {
+  border-color: #ded8ce;
+  background: #fffefa;
+  box-shadow: 0 12px 30px #1c25252b;
+}
+html[data-theme="light"] .role-menu button span {
+  color: #242b2c;
+}
+html[data-theme="light"] .role-menu button small {
+  color: #687477;
+}
+html[data-theme="light"] .role-menu button:hover,
+html[data-theme="light"] .role-menu button.selected-role {
+  background: #f1ece3;
+}
+html[data-theme="dark"] .role-menu {
+  border-color: #494333;
+  background: #1b1b18;
+  box-shadow: 0 15px 38px #000a;
+}
+html[data-theme="dark"] .role-menu button span {
+  color: #f1ead9;
+}
+html[data-theme="dark"] .role-menu button small {
+  color: #b8b1a0;
+}
+html[data-theme="dark"] .role-menu button:hover,
+html[data-theme="dark"] .role-menu button.selected-role {
+  background: #302a1e;
+}
