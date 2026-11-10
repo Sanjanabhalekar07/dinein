@@ -5,7 +5,8 @@ import { loadPosData, savePosData, type PosData } from "@/lib/pos-data";
 const readLatencyMs = 320;
 const writeLatencyMs = 180;
 
-const wait = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 export async function fetchPosSnapshot(): Promise<PosData | null> {
   await wait(readLatencyMs);
