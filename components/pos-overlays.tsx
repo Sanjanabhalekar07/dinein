@@ -839,6 +839,7 @@ export default function PosOverlays() {
                 </span>
                 <span>
                   {new Date(checkoutOrder.createdAt).toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
                     dateStyle: "medium",
                     timeStyle: "short",
                   })}

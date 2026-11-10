@@ -92,7 +92,9 @@ export default function ReportsWorkspace({
           (candidate) => candidate.id === transaction.orderId,
         );
         return [
-          new Date(transaction.createdAt).toLocaleString("en-IN"),
+          new Date(transaction.createdAt).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+          }),
           transaction.orderId,
           order?.type ?? "Unknown",
           order?.tableId ? tableLabel(order.tableId) : "—",
@@ -501,6 +503,7 @@ export default function ReportsWorkspace({
                         : ""}
                       {transaction.method} ·{" "}
                       {new Date(transaction.createdAt).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
                         dateStyle: "medium",
                         timeStyle: "short",
                       })}

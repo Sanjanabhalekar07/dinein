@@ -1,5 +1,5 @@
-import NewOrderPageContent from "@/components/pages/new-order-page";
+import { redirect } from "next/navigation";
 
 export default function NewOrderPage() {
-  return <NewOrderPageContent />;
+  redirect("/orders");
 }

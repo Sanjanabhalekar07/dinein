@@ -261,6 +261,7 @@ export default function MenuWorkspace({
                           : `Order cancelled · ${movement.orderId ?? "Order"}`}{" "}
                       ·{" "}
                       {new Date(movement.createdAt).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
                         dateStyle: "medium",
                         timeStyle: "short",
                       })}

@@ -7,7 +7,7 @@ import { usePos } from "@/components/pos-provider";
 import PosOverlays from "@/components/pos-overlays";
 
 const items = [
-  { view: "New order", href: "/new-order", icon: "order" },
+  { view: "Orders", href: "/orders", icon: "order" },
   { view: "Floor plan", href: "/floor-plan", icon: "floor" },
   { view: "Kitchen", href: "/kitchen", icon: "kitchen" },
   { view: "Menu", href: "/menu", icon: "menu" },
@@ -89,12 +89,17 @@ export default function PosShell({ children }: { children: ReactNode }) {
     setNotice,
     dateLabel,
   } = usePos();
-  const view = items.find((item) => item.href === path)?.view ?? "New order";
+  const view =
+    path === "/orders/new"
+      ? "Add order"
+      : path.endsWith("/edit")
+        ? "Edit order"
+        : (items.find((item) => item.href === path)?.view ?? "Orders");
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link className="brand" href="/new-order" aria-label="Dine In home">
+        <Link className="brand" href="/orders" aria-label="Dine In home">
           <span className="brand-mark">
             <svg viewBox="0 0 32 32" aria-hidden="true">
               <circle cx="16" cy="16" r="9.2" />
@@ -113,7 +118,7 @@ export default function PosShell({ children }: { children: ReactNode }) {
             .map((item) => (
               <Link
                 key={item.href}
-                className={`nav-link ${path === item.href ? "active" : ""}`}
+                className={`nav-link ${path === item.href || (item.href === "/orders" && path.startsWith("/orders")) ? "active" : ""}`}
                 href={item.href}
               >
                 <span className="nav-icon">

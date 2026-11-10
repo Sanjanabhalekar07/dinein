@@ -35,16 +35,17 @@ import { fetchPosSnapshot, persistPosSnapshot } from "@/lib/pos-service";
 type StaffRole = "Manager" | "Cashier" | "Waiter" | "Kitchen";
 type Theme = "light" | "dark";
 const viewPaths: Record<string, string> = {
-  "New order": "/new-order",
+  Orders: "/orders",
+  "New order": "/orders/new",
   "Floor plan": "/floor-plan",
   Kitchen: "/kitchen",
   Menu: "/menu",
   Reports: "/reports",
 };
 const roleViews: Record<StaffRole, string[]> = {
-  Manager: ["New order", "Floor plan", "Kitchen", "Menu", "Reports"],
-  Cashier: ["New order", "Floor plan", "Reports"],
-  Waiter: ["New order", "Floor plan", "Kitchen"],
+  Manager: ["Orders", "Floor plan", "Kitchen", "Menu", "Reports"],
+  Cashier: ["Orders", "Floor plan", "Reports"],
+  Waiter: ["Orders", "Floor plan", "Kitchen"],
   Kitchen: ["Kitchen"],
 };
 const money = (amount: number) =>
@@ -104,7 +105,7 @@ function usePosController() {
   const pathname = usePathname();
   const view =
     Object.entries(viewPaths).find(([, path]) => path === pathname)?.[0] ??
-    "New order";
+    (pathname.startsWith("/orders/") ? "New order" : "Orders");
   const setView = (nextView: string) => {
     const nextPath = viewPaths[nextView] ?? viewPaths["New order"];
     if (pathname !== nextPath) router.push(nextPath);
@@ -114,6 +115,7 @@ function usePosController() {
   const [category, setCategory] = useState<Category>("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<OrderLine[]>([]);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [orderType, setOrderType] = useState<Order["type"]>("Dine in");
   const [deliveryName, setDeliveryName] = useState("");
@@ -604,8 +606,49 @@ function usePosController() {
     );
   }
 
-  function placeOrder() {
-    if (cart.length === 0) return;
+  function startEditingOrder(orderId: string) {
+    const order = data.orders.find((candidate) => candidate.id === orderId);
+    if (!order || ["paid", "cancelled", "served"].includes(order.status)) {
+      setNotice("This order can no longer be edited.");
+      return false;
+    }
+    setEditingOrderId(order.id);
+    setOrderType(order.type);
+    setSelectedTable(order.tableId);
+    setDeliveryName(order.deliveryDetails?.recipientName ?? "");
+    setDeliveryPhone(order.deliveryDetails?.phone ?? "");
+    setDeliveryAddress(order.deliveryDetails?.address ?? "");
+    setCart(order.items.map((line) => ({ ...line })));
+    setCategory("All");
+    setSearch("");
+    setSelectedServiceOrderId(order.id);
+    return true;
+  }
+
+  function resetOrderDraft() {
+    setEditingOrderId(null);
+    setCart([]);
+    setOrderType("Dine in");
+    setSelectedTable("t2");
+    setDeliveryName("");
+    setDeliveryPhone("");
+    setDeliveryAddress("");
+    setCategory("All");
+    setSearch("");
+  }
+
+  function placeOrder(forceNew = false) {
+    if (cart.length === 0) {
+      setNotice("Add at least one menu item before saving this order.");
+      return;
+    }
+    const editingOrder = editingOrderId
+      ? data.orders.find((candidate) => candidate.id === editingOrderId)
+      : undefined;
+    if (editingOrderId && !editingOrder) {
+      setNotice("This order could not be found. Return to the Orders list.");
+      return;
+    }
     const requestedStock = cart.reduce<Record<string, number>>(
       (counts, line) => ({
         ...counts,
@@ -613,10 +656,28 @@ function usePosController() {
       }),
       {},
     );
-    const unavailableStock = Object.entries(requestedStock).find(
+    const previouslyConsumed = (editingOrder?.stockConsumedItems ?? []).reduce<
+      Record<string, number>
+    >(
+      (counts, line) => ({
+        ...counts,
+        [line.menuItemId]: (counts[line.menuItemId] ?? 0) + line.quantity,
+      }),
+      {},
+    );
+    const stockDelta: Record<string, number> = {};
+    for (const item of menuItems) {
+      stockDelta[item.id] =
+        (requestedStock[item.id] ?? 0) - (previouslyConsumed[item.id] ?? 0);
+    }
+    const unavailableStock = Object.entries(stockDelta).find(
       ([itemId, quantity]) => {
         const item = itemById(itemId, menuItems);
-        return item?.stockCount !== undefined && item.stockCount < quantity;
+        return (
+          quantity > 0 &&
+          item?.stockCount !== undefined &&
+          item.stockCount < quantity
+        );
       },
     );
     if (unavailableStock) {
@@ -632,17 +693,9 @@ function usePosController() {
     }
     let deliveryDetails: DeliveryDetails | undefined;
     if (orderType === "Delivery") {
-      const recipientName =
-        deliveryName.trim() ||
-        currentOrder?.deliveryDetails?.recipientName ||
-        "";
-      const normalizedPhone = (
-        deliveryPhone ||
-        currentOrder?.deliveryDetails?.phone ||
-        ""
-      ).replace(/[\s()-]/g, "");
-      const address =
-        deliveryAddress.trim() || currentOrder?.deliveryDetails?.address || "";
+      const recipientName = deliveryName.trim();
+      const normalizedPhone = deliveryPhone.replace(/[\s()-]/g, "");
+      const address = deliveryAddress.trim();
       if (recipientName.length < 2) {
         setNotice("Enter the delivery recipient's name.");
         return;
@@ -657,87 +710,211 @@ function usePosController() {
       }
       deliveryDetails = { recipientName, phone: normalizedPhone, address };
     }
-    const orderId = currentOrder?.id ?? nextOrderId(data.orders);
+    const appendToCurrent = !editingOrder && !forceNew && Boolean(currentOrder);
+    const orderId =
+      editingOrder?.id ??
+      (appendToCurrent ? currentOrder!.id : nextOrderId(data.orders));
     const firedAt = new Date().toISOString();
-    const order: Order = {
+    const tableId = orderType === "Dine in" ? selectedTable : null;
+    const nextOrder: Order = {
+      ...(editingOrder ?? ({} as Order)),
       id: orderId,
-      tableId: orderType === "Dine in" ? selectedTable : null,
+      tableId,
       type: orderType,
-      deliveryDetails: deliveryDetails ?? currentOrder?.deliveryDetails,
+      deliveryDetails,
       status: "new",
       items: cart,
-      rounds: [cart],
+      rounds: editingOrder ? [cart] : [cart],
+      stockConsumedItems: cart,
       lastFiredAt: firedAt,
-      createdAt: firedAt,
+      createdAt: editingOrder?.createdAt ?? firedAt,
     };
-    const saleMovements: InventoryMovement[] = Object.entries(
-      requestedStock,
+    const inventoryMovements: InventoryMovement[] = Object.entries(
+      stockDelta,
+    ).flatMap(([menuItemId, delta]) => {
+      const item = itemById(menuItemId, menuItems);
+      if (!item || item.stockCount === undefined || delta === 0) return [];
+      return [
+        {
+          id: `${orderId}-edit-${menuItemId}-${firedAt}`,
+          menuItemId,
+          itemName: item.name,
+          quantity: delta > 0 ? -delta : Math.abs(delta),
+          reason: delta > 0 ? ("sale" as const) : ("restock" as const),
+          orderId,
+          createdAt: firedAt,
+        },
+      ];
+    });
+
+    setData((previous) => {
+      let orders: Order[];
+      if (editingOrder) {
+        orders = previous.orders.map((candidate) =>
+          candidate.id === orderId ? nextOrder : candidate,
+        );
+      } else if (appendToCurrent && currentOrder) {
+        orders = previous.orders.map((candidate) =>
+          candidate.id === currentOrder.id
+            ? {
+                ...candidate,
+                items: [...candidate.items, ...cart],
+                rounds: [...(candidate.rounds ?? [candidate.items]), cart],
+                stockConsumedItems: [
+                  ...(candidate.stockConsumedItems ?? []),
+                  ...cart,
+                ],
+                status: "new",
+                lastFiredAt: firedAt,
+                deliveryDetails: deliveryDetails ?? candidate.deliveryDetails,
+              }
+            : candidate,
+        );
+      } else {
+        orders = [...previous.orders, nextOrder];
+      }
+      const tables = previous.tables.map((table) => {
+        if (
+          editingOrder?.tableId &&
+          editingOrder.tableId !== tableId &&
+          table.id === editingOrder.tableId
+        ) {
+          const stillOccupied = orders.some(
+            (order) =>
+              order.id !== orderId &&
+              order.tableId === table.id &&
+              !["paid", "cancelled"].includes(order.status),
+          );
+          return {
+            ...table,
+            status: stillOccupied
+              ? ("occupied" as const)
+              : ("cleaning" as const),
+            guests: stillOccupied ? table.guests : undefined,
+          };
+        }
+        return table.id === tableId
+          ? {
+              ...table,
+              status: "occupied" as const,
+              guests: table.guests ?? 2,
+              reservation: undefined,
+            }
+          : table;
+      });
+      return {
+        ...previous,
+        orders,
+        menuItems: (previous.menuItems ?? menu).map((item) =>
+          item.stockCount === undefined
+            ? item
+            : {
+                ...item,
+                stockCount: Math.max(
+                  0,
+                  item.stockCount -
+                    (stockDelta[item.id] ??
+                      (appendToCurrent ? (requestedStock[item.id] ?? 0) : 0)),
+                ),
+              },
+        ),
+        inventoryMovements: [
+          ...(previous.inventoryMovements ?? []),
+          ...inventoryMovements,
+        ],
+        tables,
+      };
+    });
+    setCart([]);
+    setEditingOrderId(null);
+    if (orderType !== "Dine in") setSelectedServiceOrderId(orderId);
+    setNotice(
+      editingOrder
+        ? `${orderId} updated and sent to the kitchen`
+        : appendToCurrent
+          ? `Additional items sent to ${orderId}`
+          : `${orderId} sent to the kitchen`,
+    );
+    setView("Orders");
+  }
+
+  function deleteOrder(orderId: string) {
+    const order = data.orders.find((candidate) => candidate.id === orderId);
+    if (!order || ["paid", "served"].includes(order.status)) {
+      setNotice("Paid or served orders cannot be deleted.");
+      return false;
+    }
+    const wasCancelled = order.status === "cancelled";
+    const returnedStock = wasCancelled
+      ? {}
+      : (order.stockConsumedItems ?? []).reduce<Record<string, number>>(
+          (counts, line) => ({
+            ...counts,
+            [line.menuItemId]: (counts[line.menuItemId] ?? 0) + line.quantity,
+          }),
+          {},
+        );
+    const movements: InventoryMovement[] = Object.entries(
+      returnedStock,
     ).flatMap(([menuItemId, quantity]) => {
       const item = itemById(menuItemId, menuItems);
       return item?.stockCount === undefined
         ? []
         : [
             {
-              id: `${orderId}-sale-${menuItemId}-${firedAt}`,
+              id: `${orderId}-delete-${menuItemId}-${Date.now()}`,
               menuItemId,
               itemName: item.name,
-              quantity: -quantity,
-              reason: "sale",
+              quantity,
+              reason: "cancellation" as const,
               orderId,
-              createdAt: firedAt,
+              createdAt: new Date().toISOString(),
             },
           ];
     });
-    setData((previous) => ({
-      ...previous,
-      orders: currentOrder
-        ? previous.orders.map((candidate) =>
-            candidate.id === currentOrder.id
-              ? {
-                  ...candidate,
-                  items: [...candidate.items, ...cart],
-                  rounds: [...(candidate.rounds ?? [candidate.items]), cart],
-                  stockConsumedItems: [
-                    ...(candidate.stockConsumedItems ?? []),
-                    ...cart,
-                  ],
-                  status: "new",
-                  lastFiredAt: firedAt,
-                  deliveryDetails: deliveryDetails ?? candidate.deliveryDetails,
-                }
-              : candidate,
-          )
-        : [...previous.orders, { ...order, stockConsumedItems: cart }],
-      menuItems: (previous.menuItems ?? menu).map((item) =>
-        item.stockCount === undefined
-          ? item
-          : {
-              ...item,
-              stockCount: Math.max(
-                0,
-                item.stockCount - (requestedStock[item.id] ?? 0),
-              ),
-            },
-      ),
-      inventoryMovements: [
-        ...(previous.inventoryMovements ?? []),
-        ...saleMovements,
-      ],
-      tables: order.tableId
-        ? previous.tables.map((table) =>
-            table.id === order.tableId
-              ? { ...table, status: "occupied", guests: table.guests ?? 2 }
-              : table,
-          )
-        : previous.tables,
-    }));
-    setCart([]);
-    if (orderType !== "Dine in") setSelectedServiceOrderId(order.id);
-    setNotice(
-      currentOrder
-        ? `Additional items sent to ${order.id}`
-        : `${order.id} sent to the kitchen`,
-    );
+    setData((previous) => {
+      const orders = previous.orders.filter(
+        (candidate) => candidate.id !== orderId,
+      );
+      return {
+        ...previous,
+        orders,
+        transactions: (previous.transactions ?? []).filter(
+          (transaction) => transaction.orderId !== orderId,
+        ),
+        menuItems: (previous.menuItems ?? menu).map((item) =>
+          item.stockCount === undefined
+            ? item
+            : {
+                ...item,
+                stockCount: item.stockCount + (returnedStock[item.id] ?? 0),
+              },
+        ),
+        inventoryMovements: [
+          ...(previous.inventoryMovements ?? []),
+          ...movements,
+        ],
+        tables: order.tableId
+          ? previous.tables.map((table) => {
+              if (table.id !== order.tableId) return table;
+              const occupied = orders.some(
+                (candidate) =>
+                  candidate.tableId === table.id &&
+                  !["paid", "cancelled"].includes(candidate.status),
+              );
+              return {
+                ...table,
+                status: occupied
+                  ? ("occupied" as const)
+                  : ("cleaning" as const),
+                guests: occupied ? table.guests : undefined,
+              };
+            })
+          : previous.tables,
+      };
+    });
+    setNotice(`${orderId} deleted.`);
+    return true;
   }
 
   function printBill() {
@@ -1628,6 +1805,7 @@ function usePosController() {
     setSearch,
     cart,
     setCart,
+    editingOrderId,
     notice,
     setNotice,
     orderType,
@@ -1782,7 +1960,10 @@ function usePosController() {
     addToCart,
     confirmCustomizedItem,
     changeQuantity,
+    startEditingOrder,
+    resetOrderDraft,
     placeOrder,
+    deleteOrder,
     printBill,
     downloadBackup,
     completePayment,
