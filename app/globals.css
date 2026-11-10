@@ -146,6 +146,7 @@ button:disabled {
   display: block;
   width: 17px;
   height: 17px;
+  margin: 0 auto;
 }
 .active .nav-icon {
   color: #267452;
@@ -5278,6 +5279,50 @@ html[data-theme="dark"] .theme-toggle {
 }
 html[data-theme="dark"] .ticket-age.is-delayed {
   color: #ffad88;
+}
+
+/* Keep table labels, guest counts, and totals inside their table cards. */
+.floor-plan {
+  height: 292px;
+}
+
+.table-node {
+  min-width: 0;
+  overflow: hidden;
+  gap: 4px;
+  padding: 7px 7px 6px;
+}
+
+.table-top {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  white-space: normal;
+  line-height: 1.15;
+}
+
+.table-top b,
+.table-top small {
+  white-space: nowrap;
+}
+
+.table-state {
+  display: -webkit-box;
+  min-width: 0;
+  margin-top: 0;
+  overflow: hidden;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.table-total {
+  flex: 0 0 auto;
+  margin-top: auto;
+  line-height: 1.2;
 }
 
 .ticket-type {

@@ -697,7 +697,7 @@ export default function NewOrderWorkspace() {
                   <span>Go to checkout</span>
                   <b>
                     {money(lineTotal(currentOrder.items, menuItems) * 1.08)}{" "}
-                    <i>?</i>
+                    <i>→</i>
                   </b>
                 </button>
               ) : (
@@ -728,7 +728,7 @@ export default function NewOrderWorkspace() {
                 {currentOrder ? "Send additional items" : "Send to kitchen"}
               </span>
               <b>
-                {money(total)} <i>?</i>
+                {money(total)} <i>→</i>
               </b>
             </button>
           )}
