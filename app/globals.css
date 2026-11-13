@@ -7106,3 +7106,168 @@ html[data-theme="dark"] .role-menu button:hover,
 html[data-theme="dark"] .role-menu button.selected-role {
   background: #302a1e;
 }
+
+html[data-theme="dark"] .report-metric > b {
+  color: #f2ecdd;
+}
+html[data-theme="dark"] .report-metric > span {
+  color: #c4b99f;
+}
+html[data-theme="dark"] .report-metric > small {
+  color: #b6b9b1;
+}
+
+html[data-theme="dark"] .wizard-progress {
+  border-color: #3c443f;
+  background: #202624;
+}
+html[data-theme="dark"] .wizard-step {
+  color: #b8c0b9;
+}
+html[data-theme="dark"] .wizard-step.current {
+  color: #f0eee6;
+}
+html[data-theme="dark"] .wizard-step > span {
+  border-color: #4b554e;
+  background: #272e2b;
+  color: #d5dbd2;
+}
+html[data-theme="dark"] .wizard-step.current > span,
+html[data-theme="dark"] .wizard-step.complete > span {
+  border-color: #ce6141;
+  background: #ce6141;
+  color: #fff8f1;
+}
+html[data-theme="dark"] .wizard-panel {
+  border-color: #3b4039;
+  background: #1e2321;
+}
+html[data-theme="dark"] .wizard-section-heading h2 {
+  color: #f0eee6;
+}
+html[data-theme="dark"] .wizard-section-heading p {
+  color: #aeb8b2;
+}
+html[data-theme="dark"] .wizard-type-card,
+html[data-theme="dark"] .wizard-table-choice,
+html[data-theme="dark"] .wizard-menu-item {
+  border-color: #414a44;
+  background: #272e2b;
+  color: #edf0e8;
+}
+html[data-theme="dark"] .wizard-type-card:hover,
+html[data-theme="dark"] .wizard-table-choice:hover,
+html[data-theme="dark"] .wizard-menu-item:hover:not(:disabled) {
+  background: #303936;
+}
+html[data-theme="dark"] .wizard-type-card.selected,
+html[data-theme="dark"] .wizard-table-choice.selected {
+  border-color: #c17658;
+  background: #332b26;
+}
+html[data-theme="dark"] .wizard-type-card small,
+html[data-theme="dark"] .wizard-table-choice small,
+html[data-theme="dark"] .wizard-menu-item small {
+  color: #b0b9b2;
+}
+html[data-theme="dark"] .wizard-type-icon {
+  background: #3c2d27;
+  color: #f0a17f;
+}
+html[data-theme="dark"] .wizard-field-group,
+html[data-theme="dark"] .wizard-label-row label,
+html[data-theme="dark"] .wizard-delivery-fields label span {
+  color: #e8e9df;
+}
+html[data-theme="dark"] .wizard-label-row a,
+html[data-theme="dark"] .wizard-back-link {
+  color: #e5a184;
+}
+html[data-theme="dark"] .wizard-delivery-fields input,
+html[data-theme="dark"] .wizard-delivery-fields textarea {
+  border-color: #46504a;
+  background: #171d1b;
+  color: #edf0e8;
+}
+html[data-theme="dark"] .wizard-delivery-fields input::placeholder,
+html[data-theme="dark"] .wizard-delivery-fields textarea::placeholder {
+  color: #89938c;
+}
+html[data-theme="dark"] .wizard-menu-browser,
+html[data-theme="dark"] .wizard-cart-panel,
+html[data-theme="dark"] .wizard-review-card {
+  border-color: #3c443f;
+  background: #202624;
+}
+html[data-theme="dark"] .wizard-category-tabs button {
+  border-color: #46504a;
+  background: #2a312e;
+  color: #c5ccc5;
+}
+html[data-theme="dark"] .wizard-category-tabs button.chosen {
+  border-color: #a46149;
+  background: #49342c;
+  color: #ffd0b9;
+}
+html[data-theme="dark"] .wizard-menu-item strong,
+html[data-theme="dark"] .wizard-menu-item > i {
+  color: #f0a17f;
+}
+html[data-theme="dark"] .wizard-cart-heading {
+  border-color: #414a44;
+  color: #b5beb7;
+}
+html[data-theme="dark"] .wizard-cart-heading b,
+html[data-theme="dark"] .wizard-cart-line b,
+html[data-theme="dark"] .wizard-cart-line strong,
+html[data-theme="dark"] .wizard-quantity,
+html[data-theme="dark"] .wizard-review-line {
+  color: #edf0e8;
+}
+html[data-theme="dark"] .wizard-cart-line,
+html[data-theme="dark"] .wizard-actions {
+  border-color: #414a44;
+}
+html[data-theme="dark"] .wizard-cart-line small,
+html[data-theme="dark"] .wizard-cart-totals,
+html[data-theme="dark"] .wizard-review-totals,
+html[data-theme="dark"] .wizard-review-card p,
+html[data-theme="dark"] .wizard-review-line small,
+html[data-theme="dark"] .wizard-no-menu,
+html[data-theme="dark"] .wizard-cart-empty {
+  color: #aeb8b2;
+}
+html[data-theme="dark"] .wizard-cart-totals b,
+html[data-theme="dark"] .wizard-review-totals b,
+html[data-theme="dark"] .wizard-review-totals > strong,
+html[data-theme="dark"] .wizard-review-card h3 {
+  color: #f0eee6;
+}
+html[data-theme="dark"] .wizard-quantity button {
+  border-color: #46504a;
+  background: #171d1b;
+  color: #edf0e8;
+}
+html[data-theme="dark"] .wizard-cart-total,
+html[data-theme="dark"] .wizard-review-totals > strong {
+  border-color: #414a44;
+}
+html[data-theme="dark"] .wizard-actions {
+  border-color: #414a44;
+}
+html[data-theme="dark"] .secondary-button,
+html[data-theme="dark"] .report-select {
+  border-color: #48514b;
+  background: #252c29;
+  color: #e9ece5;
+}
+html[data-theme="dark"] .secondary-button:hover:not(:disabled) {
+  background: #303936;
+}
+html[data-theme="dark"] .report-select option {
+  background: #202624;
+  color: #e9ece5;
+}
+html[data-theme="dark"] .report-metric > b {
+  color: #f4efe3 !important;
+}
