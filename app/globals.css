@@ -7271,3 +7271,68 @@ html[data-theme="dark"] .report-select option {
 html[data-theme="dark"] .report-metric > b {
   color: #f4efe3 !important;
 }
+
+html[data-theme="light"] .table-state-actions button,
+html[data-theme="light"] .merge-control button,
+html[data-theme="light"] .merged-table-control button,
+html[data-theme="light"] .transfer-row > button {
+  border-color: #e4ded4;
+  background: #fffefa;
+  color: #495653;
+}
+html[data-theme="light"] .table-state-actions button:hover,
+html[data-theme="light"] .merge-control button:hover,
+html[data-theme="light"] .merged-table-control button:hover,
+html[data-theme="light"] .transfer-row > button:hover:not(:disabled) {
+  background: #f3efe8;
+}
+html[data-theme="light"] .table-state-actions button.selected-state {
+  border-color: #d8c99b;
+  background: #f5f0df;
+  color: #745f2e;
+}
+html[data-theme="light"]
+  .table-manager-card
+  .status-pill.table-status-available {
+  border-color: #d8e8d8;
+  background: #eaf4eb;
+  color: #4b855a;
+}
+html[data-theme="light"]
+  .table-manager-card
+  .status-pill.table-status-occupied {
+  border-color: #eed8c8;
+  background: #fbefe7;
+  color: #a86742;
+}
+html[data-theme="light"]
+  .table-manager-card
+  .status-pill.table-status-reserved {
+  border-color: #dddded;
+  background: #efeff7;
+  color: #696b91;
+}
+html[data-theme="light"]
+  .table-manager-card
+  .status-pill.table-status-cleaning {
+  border-color: #eadfb9;
+  background: #faf5e5;
+  color: #806c35;
+}
+html[data-theme="light"] .table-manager-card .status-pill.table-status-merged {
+  border-color: #dce5df;
+  background: #edf2ef;
+  color: #65776c;
+}
+html[data-theme="light"] .merge-control select,
+html[data-theme="light"] .transfer-row select {
+  border-color: #ded8ce;
+  background: #fffefa;
+  color: #4f5d5d;
+}
+html[data-theme="light"] .merge-control button:disabled,
+html[data-theme="light"] .transfer-row > button:disabled {
+  border-color: #e8e5df;
+  background: #f1f0ed;
+  color: #8b928d;
+}
