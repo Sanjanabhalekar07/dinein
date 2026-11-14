@@ -187,6 +187,14 @@ export default function PosShell({ children }: { children: ReactNode }) {
       </aside>
       <main className="main-area">
         <header className="topbar">
+          <Link
+            className="mobile-brand"
+            href="/orders"
+            aria-label="Dine In home"
+          >
+            Dine In
+            <small>RESTAURANT OS</small>
+          </Link>
           <div className="breadcrumb">
             Workspace <span>/</span> <b>{view}</b>
           </div>
