@@ -70,6 +70,10 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
     { id: "extra-chutney", label: "Extra chutney", price: 25 },
     { id: "extra-pav", label: "Extra pav", price: 20 },
   ],
+  "South Indian": [
+    { id: "extra-sambar", label: "Extra sambar", price: 30 },
+    { id: "extra-chutney", label: "Extra chutney", price: 25 },
+  ],
   Soups: [
     { id: "soup-cream", label: "Add cream", price: 25 },
     { id: "soup-croutons", label: "Extra croutons", price: 30 },
@@ -219,9 +223,14 @@ function usePosController() {
             ...initialData,
             ...saved,
             categories: saved.categories?.length
-              ? saved.categories.map((category) =>
-                  category === "Pizza" ? "Street Food" : category,
-                )
+              ? [
+                  ...new Set([
+                    ...saved.categories.map((category) =>
+                      category === "Pizza" ? "Street Food" : category,
+                    ),
+                    "South Indian",
+                  ]),
+                ]
               : defaultCategories,
             unavailableMenuIds: saved.unavailableMenuIds ?? [],
             transactions: saved.transactions ?? [],
