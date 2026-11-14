@@ -5897,6 +5897,191 @@ html[data-theme="dark"] .mobile-brand {
 html[data-theme="dark"] .mobile-brand small {
   color: #a9a18f;
 }
+
+.mobile-profile-trigger {
+  display: none;
+}
+
+.mobile-sidebar-toggle {
+  display: none;
+}
+
+@media (max-width: 780px) {
+  .mobile-sidebar-toggle {
+    position: absolute;
+    z-index: 2;
+    top: 22px;
+    right: -10px;
+    display: grid;
+    width: 22px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #45504e;
+    border-radius: 0 8px 8px 0;
+    background: #202b2e;
+    color: #f4ede0;
+  }
+  .mobile-sidebar-toggle svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .sidebar.mobile-sidebar-open {
+    z-index: 30;
+    width: 220px;
+    padding-right: 16px;
+    box-shadow: 12px 0 35px #10181740;
+  }
+  .sidebar.mobile-sidebar-open .brand > span:not(.brand-mark) {
+    display: block;
+    font-size: 26px;
+  }
+  .sidebar.mobile-sidebar-open .side-label {
+    display: block;
+    font-size: 9px;
+  }
+  .sidebar.mobile-sidebar-open .primary-nav {
+    width: 100%;
+  }
+  .sidebar.mobile-sidebar-open .nav-link,
+  .sidebar.mobile-sidebar-open .nav-link.active {
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .sidebar.mobile-sidebar-open .nav-link kbd,
+  .sidebar.mobile-sidebar-open .nav-badge {
+    display: inline-flex;
+  }
+  .sidebar.mobile-sidebar-open .nav-link kbd {
+    margin-left: auto;
+  }
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    z-index: 20;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: #11181652;
+  }
+  html[data-theme="dark"] .mobile-sidebar-toggle {
+    border-color: #4b5045;
+    background: #24241f;
+    color: #e0be6a;
+  }
+}
+
+@media (max-width: 780px) {
+  .top-actions {
+    position: relative;
+  }
+  .mobile-profile-trigger {
+    display: grid;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+  }
+  .mobile-profile-menu {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(270px, calc(100vw - 76px));
+    padding: 14px;
+    border: 1px solid #ded8ce;
+    border-radius: 14px;
+    background: #fffefa;
+    color: #263235;
+    box-shadow: 0 14px 34px #17201f30;
+  }
+  .mobile-profile-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e9e4dc;
+  }
+  .mobile-profile-summary > span:last-child {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .mobile-profile-summary b {
+    color: #263235;
+    font-size: 13px;
+  }
+  .mobile-profile-summary small {
+    color: #788582;
+    font-size: 11px;
+  }
+  .mobile-profile-roles {
+    display: grid;
+    gap: 4px;
+    padding-top: 10px;
+  }
+  .mobile-profile-roles > small {
+    padding: 0 8px 4px;
+    color: #8a8171;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mobile-profile-roles button {
+    padding: 9px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #3a4240;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+  }
+  .mobile-profile-roles button:hover,
+  .mobile-profile-roles button.selected-role {
+    background: #f1ece3;
+    color: #a6452e;
+  }
+}
+
+@media (max-width: 780px) {
+  html[data-theme="dark"] .mobile-profile-menu {
+    border-color: #494333;
+    background: #1b1b18;
+    color: #f1ead9;
+    box-shadow: 0 15px 38px #000a;
+  }
+  html[data-theme="dark"] .mobile-profile-summary {
+    border-color: #39372f;
+  }
+  html[data-theme="dark"] .mobile-profile-summary b {
+    color: #f1ead9;
+  }
+  html[data-theme="dark"] .mobile-profile-summary small,
+  html[data-theme="dark"] .mobile-profile-roles > small {
+    color: #b8b1a0;
+  }
+  html[data-theme="dark"] .mobile-profile-roles button {
+    color: #e5dfd0;
+  }
+  html[data-theme="dark"] .mobile-profile-roles button:hover,
+  html[data-theme="dark"] .mobile-profile-roles button.selected-role {
+    background: #302a1e;
+    color: #e0be6a;
+  }
+}
 .restock-controls {
   grid-column: 1/-1;
   display: flex;
@@ -7433,5 +7618,22 @@ html[data-theme="light"] .transfer-row > button:disabled {
   .availability-card .restock-controls {
     grid-column: 1 / -1;
     min-width: 0;
+  }
+}
+
+@media (max-width: 780px) {
+  .sidebar.mobile-sidebar-open .brand {
+    width: auto;
+    min-width: 0;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    gap: 10px;
+    margin: 1px 0 43px 7px;
+    overflow: visible;
+  }
+  .sidebar.mobile-sidebar-open .brand > span:not(.brand-mark) {
+    display: block;
+    min-width: 0;
+    font-size: 26px;
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePos } from "@/components/pos-provider";
 import PosOverlays from "@/components/pos-overlays";
 
@@ -68,6 +68,7 @@ function NavIcon({ name }: { name: (typeof items)[number]["icon"] }) {
 }
 
 export default function PosShell({ children }: { children: ReactNode }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const path = usePathname();
   const {
     allowedViews,
@@ -98,7 +99,9 @@ export default function PosShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside
+        className={`sidebar ${mobileNavOpen ? "mobile-sidebar-open" : ""}`}
+      >
         <Link className="brand" href="/orders" aria-label="Dine In home">
           <span className="brand-mark">
             <svg viewBox="0 0 32 32" aria-hidden="true">
@@ -111,6 +114,18 @@ export default function PosShell({ children }: { children: ReactNode }) {
             Dine In<small>RESTAURANT OS</small>
           </span>
         </Link>
+        <button
+          className="mobile-sidebar-toggle"
+          aria-label={
+            mobileNavOpen ? "Collapse navigation" : "Expand navigation"
+          }
+          aria-expanded={mobileNavOpen}
+          onClick={() => setMobileNavOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d={mobileNavOpen ? "m10 3-5 5 5 5" : "m6 3 5 5-5 5"} />
+          </svg>
+        </button>
         <div className="side-label">WORKSPACE</div>
         <nav className="primary-nav" aria-label="Main navigation">
           {items
@@ -120,6 +135,17 @@ export default function PosShell({ children }: { children: ReactNode }) {
                 key={item.href}
                 className={`nav-link ${path === item.href || (item.href === "/orders" && path.startsWith("/orders")) ? "active" : ""}`}
                 href={item.href}
+                onClick={(event) => {
+                  if (
+                    !mobileNavOpen &&
+                    window.matchMedia("(max-width: 780px)").matches
+                  ) {
+                    event.preventDefault();
+                    setMobileNavOpen(true);
+                  } else if (window.matchMedia("(max-width: 780px)").matches) {
+                    setMobileNavOpen(false);
+                  }
+                }}
               >
                 <span className="nav-icon">
                   <NavIcon name={item.icon} />
@@ -156,7 +182,7 @@ export default function PosShell({ children }: { children: ReactNode }) {
               aria-expanded={roleMenuOpen}
               onClick={() => setRoleMenuOpen((open) => !open)}
             >
-              <span className="avatar">AM</span>
+              <span className="avatar">SB</span>
               <span>
                 <b>Sanjana Bhalekar</b>
                 <small>{role} | Demo role</small>
@@ -185,6 +211,13 @@ export default function PosShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </aside>
+      {mobileNavOpen && (
+        <button
+          className="mobile-sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
       <main className="main-area">
         <header className="topbar">
           <Link
@@ -255,7 +288,50 @@ export default function PosShell({ children }: { children: ReactNode }) {
                 )}
               </svg>
             </button>
-            <span className="avatar top-avatar">SB</span>
+            <button
+              className="avatar top-avatar mobile-profile-trigger"
+              aria-label="Open profile and demo role settings for Sanjana Bhalekar"
+              aria-expanded={roleMenuOpen}
+              aria-controls="mobile-profile-menu"
+              onClick={() => setRoleMenuOpen((open) => !open)}
+            >
+              SB
+            </button>
+            {roleMenuOpen && (
+              <div
+                className="mobile-profile-menu"
+                id="mobile-profile-menu"
+                aria-label="Staff profile and demo role"
+              >
+                <div className="mobile-profile-summary">
+                  <span className="avatar">SB</span>
+                  <span>
+                    <b>Sanjana Bhalekar</b>
+                    <small>{role} | Demo role</small>
+                  </span>
+                </div>
+                <div
+                  className="mobile-profile-roles"
+                  role="menu"
+                  aria-label="Choose demo staff role"
+                >
+                  <small>Switch demo role</small>
+                  {(["Manager", "Cashier", "Waiter", "Kitchen"] as const).map(
+                    (nextRole) => (
+                      <button
+                        role="menuitemradio"
+                        aria-checked={role === nextRole}
+                        className={role === nextRole ? "selected-role" : ""}
+                        key={nextRole}
+                        onClick={() => changeRole(nextRole)}
+                      >
+                        {nextRole}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </header>
         <section className="page-content">{children}</section>
