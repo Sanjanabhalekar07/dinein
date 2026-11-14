@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePos } from "@/components/pos-provider";
 import PosOverlays from "@/components/pos-overlays";
 
@@ -69,6 +69,8 @@ function NavIcon({ name }: { name: (typeof items)[number]["icon"] }) {
 
 export default function PosShell({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const staffRoleRef = useRef<HTMLDivElement>(null);
+  const mobileProfileRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const {
     allowedViews,
@@ -90,6 +92,24 @@ export default function PosShell({ children }: { children: ReactNode }) {
     setNotice,
     dateLabel,
   } = usePos();
+  useEffect(() => {
+    if (!roleMenuOpen) return;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !staffRoleRef.current?.contains(target) &&
+        !mobileProfileRef.current?.contains(target)
+      ) {
+        setRoleMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () =>
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [roleMenuOpen, setRoleMenuOpen]);
   const view =
     path === "/orders/new"
       ? "Add order"
@@ -176,7 +196,7 @@ export default function PosShell({ children }: { children: ReactNode }) {
             <strong>{todayTransactions.length}</strong>
           </div>
           <div className="side-divider" />
-          <div className="staff-role-wrap">
+          <div className="staff-role-wrap" ref={staffRoleRef}>
             <button
               className="staff-card"
               aria-expanded={roleMenuOpen}
@@ -288,50 +308,52 @@ export default function PosShell({ children }: { children: ReactNode }) {
                 )}
               </svg>
             </button>
-            <button
-              className="avatar top-avatar mobile-profile-trigger"
-              aria-label="Open profile and demo role settings for Sanjana Bhalekar"
-              aria-expanded={roleMenuOpen}
-              aria-controls="mobile-profile-menu"
-              onClick={() => setRoleMenuOpen((open) => !open)}
-            >
-              SB
-            </button>
-            {roleMenuOpen && (
-              <div
-                className="mobile-profile-menu"
-                id="mobile-profile-menu"
-                aria-label="Staff profile and demo role"
+            <div className="mobile-profile-control" ref={mobileProfileRef}>
+              <button
+                className="avatar top-avatar mobile-profile-trigger"
+                aria-label="Open profile and demo role settings for Sanjana Bhalekar"
+                aria-expanded={roleMenuOpen}
+                aria-controls="mobile-profile-menu"
+                onClick={() => setRoleMenuOpen((open) => !open)}
               >
-                <div className="mobile-profile-summary">
-                  <span className="avatar">SB</span>
-                  <span>
-                    <b>Sanjana Bhalekar</b>
-                    <small>{role} | Demo role</small>
-                  </span>
-                </div>
+                SB
+              </button>
+              {roleMenuOpen && (
                 <div
-                  className="mobile-profile-roles"
-                  role="menu"
-                  aria-label="Choose demo staff role"
+                  className="mobile-profile-menu"
+                  id="mobile-profile-menu"
+                  aria-label="Staff profile and demo role"
                 >
-                  <small>Switch demo role</small>
-                  {(["Manager", "Cashier", "Waiter", "Kitchen"] as const).map(
-                    (nextRole) => (
-                      <button
-                        role="menuitemradio"
-                        aria-checked={role === nextRole}
-                        className={role === nextRole ? "selected-role" : ""}
-                        key={nextRole}
-                        onClick={() => changeRole(nextRole)}
-                      >
-                        {nextRole}
-                      </button>
-                    ),
-                  )}
+                  <div className="mobile-profile-summary">
+                    <span className="avatar">SB</span>
+                    <span>
+                      <b>Sanjana Bhalekar</b>
+                      <small>{role} | Demo role</small>
+                    </span>
+                  </div>
+                  <div
+                    className="mobile-profile-roles"
+                    role="menu"
+                    aria-label="Choose demo staff role"
+                  >
+                    <small>Switch demo role</small>
+                    {(["Manager", "Cashier", "Waiter", "Kitchen"] as const).map(
+                      (nextRole) => (
+                        <button
+                          role="menuitemradio"
+                          aria-checked={role === nextRole}
+                          className={role === nextRole ? "selected-role" : ""}
+                          key={nextRole}
+                          onClick={() => changeRole(nextRole)}
+                        >
+                          {nextRole}
+                        </button>
+                      ),
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </header>
         <section className="page-content">{children}</section>

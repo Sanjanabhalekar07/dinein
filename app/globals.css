@@ -5910,6 +5910,10 @@ html[data-theme="dark"] .mobile-brand small {
   display: none;
 }
 
+.mobile-profile-control {
+  display: contents;
+}
+
 @media (max-width: 780px) {
   .mobile-sidebar-toggle {
     position: absolute;
@@ -5995,6 +5999,11 @@ html[data-theme="dark"] .mobile-brand small {
     border: 0;
     cursor: pointer;
     font: inherit;
+  }
+  .mobile-profile-control {
+    position: relative;
+    display: flex;
+    align-items: center;
   }
   .mobile-profile-menu {
     position: absolute;
