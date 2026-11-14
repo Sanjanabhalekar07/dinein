@@ -8,6 +8,7 @@ import {
   defaultCategories,
   initialData,
   menu,
+  migrateMenuItems,
   type Category,
   type DeliveryDetails,
   type InventoryMovement,
@@ -65,9 +66,9 @@ const modifiersByCategory: Record<MenuItem["category"], MenuModifier[]> = {
     { id: "extra-protein", label: "Extra protein", price: 120 },
     { id: "no-onion", label: "No onion", price: 0 },
   ],
-  Pizza: [
-    { id: "extra-cheese", label: "Extra mozzarella", price: 60 },
-    { id: "chili-oil", label: "Chili oil", price: 30 },
+  "Street Food": [
+    { id: "extra-chutney", label: "Extra chutney", price: 25 },
+    { id: "extra-pav", label: "Extra pav", price: 20 },
   ],
   Soups: [
     { id: "soup-cream", label: "Add cream", price: 25 },
@@ -218,11 +219,13 @@ function usePosController() {
             ...initialData,
             ...saved,
             categories: saved.categories?.length
-              ? saved.categories
+              ? saved.categories.map((category) =>
+                  category === "Pizza" ? "Street Food" : category,
+                )
               : defaultCategories,
             unavailableMenuIds: saved.unavailableMenuIds ?? [],
             transactions: saved.transactions ?? [],
-            menuItems: saved.menuItems ?? menu,
+            menuItems: migrateMenuItems(saved.menuItems ?? menu),
           });
         setStorageReady(true);
         setStorageStatus("saved");
